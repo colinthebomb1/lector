@@ -180,7 +180,11 @@ async def test_code_review_hint_fallback_partial_progress():
 
     assert "hint" in result
     assert result["progress"] == "partial"
-    assert "created" in result["hint"].lower() or "used" in result["hint"].lower()
+    assert (
+        "assumption" in result["hint"].lower()
+        or "input path" in result["hint"].lower()
+        or "invalid" in result["hint"].lower()
+    )
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,11 @@ import Editor, { type OnMount } from '@monaco-editor/react';
 import { api, type ChallengeSummary, type CurrentUser } from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from './ui/resizable';
+import {
   getCodeReviewChallenge,
   type SolutionVerdict,
 } from '../data/codeReviewChallenges';
@@ -166,106 +171,121 @@ export function CodeReviewPlay({
                 </p>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-auto p-4 bg-background/45">
-                <CodeSnippet code={reviewChallenge.original_code} />
-              </div>
-
-              <div className="flex-shrink-0 border-t border-border/80 bg-background/35 px-4 py-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleHint}
-                    disabled={hintsRemaining === 0}
-                    className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded border border-orange-400/50 text-orange-300 bg-orange-400/10 hover:bg-orange-400/15 hover:border-orange-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title={
-                      hintsRemaining > 0
-                        ? `${hintsRemaining} hint${hintsRemaining === 1 ? '' : 's'} remaining`
-                        : 'No more hints'
-                    }
-                  >
-                    {hintsRemaining > 0
-                      ? `Hint (${hintIndex + 1}/${reviewChallenge.hints.length})`
-                      : 'No more hints'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleAiHint()}
-                    disabled={loadingAiHint}
-                    className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded border border-sky-400/50 text-sky-200 bg-sky-400/10 hover:bg-sky-400/15 hover:border-sky-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title="Get an adaptive hint based on your current patch"
-                  >
-                    {loadingAiHint ? 'Thinking…' : 'AI Tailored Hint'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={grading}
-                    className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {grading ? 'Checking…' : 'Submit'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    disabled={!dirty}
-                    className="px-3 py-1.5 text-[10px] uppercase tracking-wider border border-red-400/40 text-red-300 rounded hover:border-red-300 hover:bg-red-400/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Reset
-                  </button>
-                  <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                    Ctrl/⌘ + Enter to submit
-                  </span>
-                </div>
-
-                {verdict && (
-                  <div
-                    className={`rounded border px-3 py-2 text-sm ${
-                      verdict.passed
-                        ? 'text-green-400 border-green-400/30 bg-green-400/5'
-                        : 'text-red-400 border-red-400/30 bg-red-400/5'
-                    }`}
-                  >
-                    <p className="text-[10px] uppercase tracking-[0.18em] mb-1">
-                      {verdict.passed ? 'Passed' : 'Try again'}
-                    </p>
-                    <p className="text-foreground/90">{verdict.message}</p>
+              <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0">
+                <ResizablePanel defaultSize={70} minSize={35}>
+                  <div className="h-full min-h-0 overflow-auto p-4 bg-background/45">
+                    <CodeSnippet code={reviewChallenge.original_code} />
                   </div>
-                )}
+                </ResizablePanel>
 
-                <p className="text-[11px] text-muted-foreground">
-                  Static hints are fixed clues. AI hints analyze your current patch against the
-                  learning rubric and get more specific as you get closer.
-                </p>
+                <ResizableHandle
+                  withHandle
+                  className="border-y border-border/80 bg-background/60 hover:bg-accent/20 transition-colors"
+                />
 
-                {aiHint && (
-                  <div className="rounded border border-sky-400/30 bg-sky-400/5 px-3 py-2 text-sm">
-                    <p className="text-[10px] uppercase tracking-[0.18em] mb-1 text-sky-200">
-                      AI hint
-                      {aiHintProgress ? ` · ${aiHintProgress}` : ''}
-                    </p>
-                    <p className="text-foreground/90 whitespace-pre-wrap">{aiHint}</p>
-                  </div>
-                )}
-
-                {revealedHints.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-foreground/85 font-semibold">
-                      Revealed hints
-                    </p>
-                    {revealedHints.map((hint, idx) => (
-                      <p
-                        key={idx}
-                        className="text-xs text-foreground/85 bg-background/70 border border-border/70 rounded px-3 py-2"
-                      >
-                        <span className="text-muted-foreground mr-2">
-                          {idx + 1}.
+                <ResizablePanel defaultSize={30} minSize={18} maxSize={55}>
+                  <div className="h-full min-h-0 overflow-hidden bg-background/35">
+                    <div className="border-b border-border/80 px-4 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleHint}
+                          disabled={hintsRemaining === 0}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded border border-orange-400/50 text-orange-300 bg-orange-400/10 hover:bg-orange-400/15 hover:border-orange-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          title={
+                            hintsRemaining > 0
+                              ? `${hintsRemaining} hint${hintsRemaining === 1 ? '' : 's'} remaining`
+                              : 'No more hints'
+                          }
+                        >
+                          {hintsRemaining > 0
+                            ? `Hint (${hintIndex + 1}/${reviewChallenge.hints.length})`
+                            : 'No more hints'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleAiHint()}
+                          disabled={loadingAiHint}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded border border-sky-400/50 text-sky-200 bg-sky-400/10 hover:bg-sky-400/15 hover:border-sky-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          title="Get an adaptive hint based on your current patch"
+                        >
+                          {loadingAiHint ? 'Thinking…' : 'AI Tailored Hint'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSubmit}
+                          disabled={grading}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {grading ? 'Checking…' : 'Submit'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleReset}
+                          disabled={!dirty}
+                          className="px-3 py-1.5 text-[10px] uppercase tracking-wider border border-red-400/40 text-red-300 rounded hover:border-red-300 hover:bg-red-400/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Reset
+                        </button>
+                        <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Ctrl/⌘ + Enter to submit
                         </span>
-                        {hint}
+                      </div>
+                    </div>
+
+                    <div className="h-full min-h-0 overflow-y-auto px-4 py-3 space-y-3">
+                      {verdict && (
+                        <div
+                          className={`rounded border px-3 py-2 text-sm ${
+                            verdict.passed
+                              ? 'text-green-400 border-green-400/30 bg-green-400/5'
+                              : 'text-red-400 border-red-400/30 bg-red-400/5'
+                          }`}
+                        >
+                          <p className="text-[10px] uppercase tracking-[0.18em] mb-1">
+                            {verdict.passed ? 'Passed' : 'Try again'}
+                          </p>
+                          <p className="text-foreground/90">{verdict.message}</p>
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-muted-foreground">
+                        Static hints are fixed clues. AI hints analyze your current patch against
+                        the learning rubric and get more specific as you get closer.
                       </p>
-                    ))}
+
+                      {aiHint && (
+                        <div className="rounded border border-sky-400/30 bg-sky-400/5 px-3 py-2 text-sm">
+                          <p className="text-[10px] uppercase tracking-[0.18em] mb-1 text-sky-200">
+                            AI hint
+                            {aiHintProgress ? ` · ${aiHintProgress}` : ''}
+                          </p>
+                          <p className="text-foreground/90 whitespace-pre-wrap">{aiHint}</p>
+                        </div>
+                      )}
+
+                      {revealedHints.length > 0 && (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-foreground/85 font-semibold">
+                            Revealed hints
+                          </p>
+                          {revealedHints.map((hint, idx) => (
+                            <p
+                              key={idx}
+                              className="text-xs text-foreground/85 bg-background/70 border border-border/70 rounded px-3 py-2"
+                            >
+                              <span className="text-muted-foreground mr-2">
+                                {idx + 1}.
+                              </span>
+                              {hint}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
             </section>
 
             <section className="min-w-0 min-h-0 overflow-hidden flex flex-col bg-background">
