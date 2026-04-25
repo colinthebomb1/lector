@@ -40,7 +40,7 @@ export function Nav({ onAuthClick, authenticated = false }: NavProps) {
             onClick={onAuthClick}
             className="px-4 md:px-6 py-2 text-sm md:text-base border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-all"
           >
-            {authenticated ? 'Dashboard →' : 'Start reading →'}
+            {authenticated ? 'Dashboard →' : 'Begin review →'}
           </button>
         </div>
       </div>
