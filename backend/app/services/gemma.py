@@ -6,12 +6,29 @@ All responses are cached by prompt hash in MongoDB to save API cost and handle f
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 
 import httpx
 
 from app.config import get_settings
-from app.database import get_db
+from app.database import get_db, is_db_connected
+
+logger = logging.getLogger(__name__)
+
+# Treat obviously-fake API keys as "not configured" so the local fallback
+# kicks in instead of sending a doomed request to Google.
+_PLACEHOLDER_API_KEYS = {
+    "",
+    "your-google-ai-studio-key",
+    "your-api-key-here",
+    "changeme",
+    "todo",
+}
+
+
+def _is_real_api_key(value: str) -> bool:
+    return bool(value) and value.strip().lower() not in _PLACEHOLDER_API_KEYS
 
 
 async def check_reading_comprehension(
@@ -127,55 +144,69 @@ async def generate_post_solve_writeup(
 
 
 async def _gemma_request(prompt: str) -> dict:
-    """Send a request to Gemma, with MongoDB caching by prompt hash."""
+    """Send a request to Gemma, with MongoDB caching by prompt hash.
+
+    Falls back to a deterministic local response when:
+      - the API key is missing or a known placeholder, or
+      - Gemma returns a non-2xx response, or
+      - the network call fails / times out, or
+      - the response shape is unexpected.
+
+    The handler MUST NOT raise — every callsite expects a dict and an
+    unhandled exception here turns into a 500 that escapes CORS handling
+    and surfaces in the browser as "Failed to fetch".
+    """
     cache_key = hashlib.sha256(prompt.encode()).hexdigest()
-    db = get_db()
-    cached = await db.gemma_cache.find_one({"_id": cache_key})
-    if cached:
-        return cached["response"]
+    db = get_db() if is_db_connected() else None
+
+    if db is not None:
+        try:
+            cached = await db.gemma_cache.find_one({"_id": cache_key})
+            if cached:
+                return cached["response"]
+        except Exception as exc:
+            logger.warning("Gemma cache read failed: %s", exc)
 
     settings = get_settings()
-    if not settings.gemma_api_key:
+    result: dict
+
+    if not _is_real_api_key(settings.gemma_api_key):
         result = _local_fallback_response(prompt)
-        await db.gemma_cache.update_one(
-            {"_id": cache_key},
-            {
-                "$set": {
-                    "response": result,
-                    "prompt": prompt[:500],
-                    "created_at": datetime.now(timezone.utc),
-                }
-            },
-            upsert=True,
-        )
-        return result
+    else:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
+                    params={"key": settings.gemma_api_key},
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            try:
+                result = json.loads(_strip_code_fences(text))
+            except json.JSONDecodeError:
+                result = {"text": text}
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            logger.warning("Gemma API call failed (%s); using local fallback", exc)
+            result = _local_fallback_response(prompt)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
-            params={"key": settings.gemma_api_key},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    if db is not None:
+        try:
+            await db.gemma_cache.update_one(
+                {"_id": cache_key},
+                {
+                    "$set": {
+                        "response": result,
+                        "prompt": prompt[:500],
+                        "created_at": datetime.now(timezone.utc),
+                    }
+                },
+                upsert=True,
+            )
+        except Exception as exc:
+            logger.warning("Gemma cache write failed: %s", exc)
 
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-    try:
-        result = json.loads(_strip_code_fences(text))
-    except json.JSONDecodeError:
-        result = {"text": text}
-
-    await db.gemma_cache.update_one(
-        {"_id": cache_key},
-        {
-            "$set": {
-                "response": result,
-                "prompt": prompt[:500],
-                "created_at": datetime.now(timezone.utc),
-            }
-        },
-        upsert=True,
-    )
     return result
 
 

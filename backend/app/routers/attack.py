@@ -148,13 +148,27 @@ async def request_attack_hint(
 
     hint_tiers = [t.model_dump() for t in challenge.metadata.hint_tiers]
 
-    result = await generate_attack_hint(
-        challenge_name=challenge.metadata.name,
-        scenario=challenge.scenario,
-        vulnerable_code=vuln_code,
-        hint_tiers=hint_tiers,
-        attempted_payloads=payload_dicts,
-    )
+    try:
+        result = await generate_attack_hint(
+            challenge_name=challenge.metadata.name,
+            scenario=challenge.scenario,
+            vulnerable_code=vuln_code,
+            hint_tiers=hint_tiers,
+            attempted_payloads=payload_dicts,
+        )
+    except Exception as exc:  # pragma: no cover - last-resort guard
+        # Never let a hint failure escape as a 500 — without CORS headers
+        # the browser surfaces it as "Failed to fetch".
+        fallback_text = (
+            challenge.metadata.hint_tiers[0].text
+            if challenge.metadata.hint_tiers
+            else "Take another look at how user input is interpreted by the app."
+        )
+        return {
+            "hint": fallback_text,
+            "analysis": f"Hint service unavailable ({exc.__class__.__name__}); showing a static hint.",
+            "attempts_analyzed": len(payload_dicts),
+        }
 
     return {
         "hint": result.get("hint", result.get("text", "")),
