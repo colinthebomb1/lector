@@ -19,15 +19,10 @@ class FakeUsersCollection:
 class FakeSubmissionsCollection:
     def __init__(self):
         self.inserted = []
-        self.updated = []
 
     async def insert_one(self, doc):
         self.inserted.append(doc)
         return SimpleNamespace(inserted_id=len(self.inserted))
-
-    async def update_one(self, query, update):
-        self.updated.append((query, update))
-        return SimpleNamespace(matched_count=1)
 
 
 class FakeDatabase:
@@ -130,10 +125,8 @@ def test_submit_flag_accepts_correct_flag_and_records_submission(client, monkeyp
     assert len(fake_db.submissions.inserted) == 1
     stored = fake_db.submissions.inserted[0]
     assert stored["challenge_id"] == "sqli-login-bypass"
-    assert stored["phase"] == "attack"
     assert stored["result"]["status"] == GradeStatus.PASSED
     assert fake_db.users.update_calls[0][1]["$inc"]["total_score"] == 50
-    assert fake_db.submissions.updated[0][1]["$set"]["score_awarded"] == 50
 
 
 def test_submit_flag_rejects_incorrect_flag(client, monkeypatch):

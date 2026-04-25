@@ -13,13 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.database import get_db, is_db_connected
-from app.models import (
-    Submission,
-    SubmissionPhase,
-    SubmissionType,
-    GradeResult,
-    GradeStatus,
-)
+from app.models import Submission, SubmissionType, GradeResult, GradeStatus
 from app.routers.auth import require_session
 from app.services.attack_session import (
     start_attack_session,
@@ -92,7 +86,6 @@ async def submit_flag(
             user_id=user["session_id"],
             challenge_id=challenge_id,
             submission_type=SubmissionType.FLAG,
-            phase=SubmissionPhase.ATTACK,
             payload={"flag": body.flag},
             result=GradeResult(
                 status=GradeStatus.PASSED if passed else GradeStatus.FAILED,
@@ -103,31 +96,13 @@ async def submit_flag(
         await db.submissions.insert_one(submission.model_dump())
 
         if passed:
-            update = await db.users.update_one(
-                {
-                    "session_id": user["session_id"],
-                    "challenges_completed": {"$ne": f"{challenge_id}:attack"},
-                },
+            await db.users.update_one(
+                {"session_id": user["session_id"]},
                 {
                     "$addToSet": {"challenges_completed": f"{challenge_id}:attack"},
                     "$inc": {"total_score": 50},
                 },
             )
-            if update.matched_count == 0:
-                await db.users.update_one(
-                    {"session_id": user["session_id"]},
-                    {"$addToSet": {"challenges_completed": f"{challenge_id}:attack"}},
-                )
-            else:
-                await db.submissions.update_one(
-                    {
-                        "user_id": user["session_id"],
-                        "challenge_id": challenge_id,
-                        "submission_type": SubmissionType.FLAG,
-                        "created_at": submission.created_at,
-                    },
-                    {"$set": {"score_awarded": 50}},
-                )
 
     return {
         "accepted": passed,

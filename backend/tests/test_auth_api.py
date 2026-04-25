@@ -123,7 +123,6 @@ def test_login_accepts_existing_email_and_password(client, monkeypatch):
         "session_id": "session-1",
         "nickname": "Ada",
         "email": "ada@example.com",
-        "auth_provider": "password",
     }
     assert response.cookies["session_id"] == "session-1"
 
@@ -175,8 +174,6 @@ def test_me_returns_authenticated_user_from_signup_session(client, monkeypatch):
         "authenticated": True,
         "nickname": "Ada",
         "email": "ada@example.com",
-        "auth_provider": "password",
-        "avatar_url": None,
         "challenges_completed": [],
         "total_score": 0,
     }
