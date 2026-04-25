@@ -24,6 +24,11 @@ async def connect_db() -> None:
         await asyncio.wait_for(_client.admin.command("ping"), timeout=3)
         logger.info("MongoDB connected at %s", settings.mongo_url)
         await _db.users.create_index("session_id", unique=True)
+        await _db.users.create_index(
+            "email",
+            unique=True,
+            partialFilterExpression={"email": {"$type": "string"}},
+        )
         try:
             await _db.submissions.drop_index("user_id_1_challenge_id_1")
         except OperationFailure:
