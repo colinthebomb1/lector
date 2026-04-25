@@ -1,10 +1,12 @@
 import json
+import logging
 from pathlib import Path
 
 from app.config import get_settings
 from app.models import Challenge, ChallengeMetadata
 
 _challenges: dict[str, Challenge] = {}
+logger = logging.getLogger(__name__)
 
 
 def load_challenges() -> dict[str, Challenge]:
@@ -34,7 +36,7 @@ def load_challenges() -> dict[str, Challenge]:
             scenario = ""
             scenario_path = challenge_dir / "scenario.md"
             if scenario_path.exists():
-                scenario = scenario_path.read_text()
+                scenario = scenario_path.read_text(encoding="utf-8")
 
             code_files: dict[str, str] = {}
             code_dir = challenge_dir / "code"
@@ -43,16 +45,17 @@ def load_challenges() -> dict[str, Challenge]:
                     if not f.is_file():
                         continue
                     try:
-                        code_files[str(f.relative_to(code_dir))] = f.read_text()
+                        code_files[str(f.relative_to(code_dir))] = f.read_text(encoding="utf-8")
                     except (UnicodeDecodeError, OSError):
                         # Skip binary or unreadable files instead of failing
                         # the whole load.
+                        logger.warning("Skipping non-text challenge file: %s", f)
                         continue
 
             ref_summary = ""
             ref_path = challenge_dir / "solution" / "reference.md"
             if ref_path.exists():
-                ref_summary = ref_path.read_text()
+                ref_summary = ref_path.read_text(encoding="utf-8")
 
             dockerfile = ""
             df_path = challenge_dir / "Dockerfile"
