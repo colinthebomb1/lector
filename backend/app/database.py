@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,12 +24,20 @@ async def connect_db() -> None:
         await asyncio.wait_for(_client.admin.command("ping"), timeout=3)
         logger.info("MongoDB connected at %s", settings.mongo_url)
         await _db.users.create_index("session_id", unique=True)
-        await _db.submissions.create_index([("user_id", 1), ("challenge_id", 1)])
+        try:
+            await _db.submissions.drop_index("user_id_1_challenge_id_1")
+        except OperationFailure:
+            pass
         await _db.submissions.create_index("created_at")
-    except Exception as e:
-        logger.warning("MongoDB unavailable (%s) — running without database", e)
+        await _db.submissions.create_index(
+            [("user_id", 1), ("challenge_id", 1), ("created_at", -1)]
+        )
+        await _db.gemma_cache.create_index("created_at", expireAfterSeconds=604800)
+    except Exception:
         _client = None
         _db = None
+        logger.exception("MongoDB connection failed during startup")
+        raise
 
 
 async def close_db() -> None:
