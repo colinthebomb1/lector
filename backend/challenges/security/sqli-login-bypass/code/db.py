@@ -33,7 +33,8 @@ def init_db():
 
 def get_user_by_credentials(username: str, password: str):
     conn = get_db()
-    query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
-    user = conn.execute(query).fetchone()
-    conn.close()
-    return user
+    try:
+        query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
+        return conn.execute(query).fetchone()
+    finally:
+        conn.close()
