@@ -49,6 +49,48 @@ async def get_hint(challenge_id: str, tier: int, user_context: str = "") -> str:
     return result.get("text", str(result))
 
 
+async def generate_attack_hint(
+    challenge_name: str,
+    scenario: str,
+    vulnerable_code: str,
+    hint_tiers: list[dict],
+    attempted_payloads: list[dict],
+) -> dict:
+    """
+    Analyze the user's attempted payloads and generate a contextual hint.
+
+    Returns { hint: str, analysis: str }
+    """
+    payloads_summary = ""
+    if attempted_payloads:
+        for i, p in enumerate(attempted_payloads[-10:], 1):
+            form = p.get("form_data", {})
+            status = p.get("response_status", "?")
+            payloads_summary += f"  {i}. POST /{p.get('path', '?')} → {status} | fields: {form}\n"
+    else:
+        payloads_summary = "  (no attempts yet)\n"
+
+    tiers_text = ""
+    for t in hint_tiers:
+        tiers_text += f"  Tier {t.get('tier', '?')}: {t.get('text', '')}\n"
+
+    prompt = (
+        "You are a cybersecurity tutor helping a student learn to exploit a web vulnerability.\n"
+        f"Challenge: {challenge_name}\n\n"
+        f"Scenario:\n{scenario}\n\n"
+        f"Vulnerable code:\n```python\n{vulnerable_code}\n```\n\n"
+        f"Available hint tiers (for reference — do NOT just repeat these):\n{tiers_text}\n"
+        f"Student's recent payloads:\n{payloads_summary}\n"
+        "Based on what the student has tried, provide a short, encouraging hint that:\n"
+        "1. Acknowledges what they've tried so far\n"
+        "2. Nudges them toward the right direction without giving the full answer\n"
+        "3. If they are close, be more specific; if they haven't tried anything useful, be more general\n"
+        "4. Keep it under 100 words\n\n"
+        "Respond as JSON: {\"hint\": \"<your hint>\", \"analysis\": \"<brief analysis of their attempts>\"}"
+    )
+    return await _gemma_request(prompt)
+
+
 async def grade_explanation(
     explanation: str, rubric: dict, challenge_context: str = ""
 ) -> dict:
@@ -119,7 +161,7 @@ async def _gemma_request(prompt: str) -> dict:
 
     text = data["candidates"][0]["content"]["parts"][0]["text"]
     try:
-        result = json.loads(text)
+        result = json.loads(_strip_code_fences(text))
     except json.JSONDecodeError:
         result = {"text": text}
 
@@ -161,7 +203,32 @@ def _local_fallback_response(prompt: str) -> dict:
             "missing_points": sorted(reference_terms - student_terms)[:3],
         }
 
+    if "cybersecurity tutor" in prompt and "Student's recent payloads:" in prompt:
+        payloads_section = _extract_section(prompt, "Student's recent payloads:\n", "\nBased on what")
+        has_attempts = "(no attempts yet)" not in payloads_section
+        if not has_attempts:
+            return {
+                "hint": "Start by trying to log in with some test credentials. Pay attention to how the application responds — error messages can reveal a lot about what's happening behind the scenes.",
+                "analysis": "No attempts recorded yet.",
+            }
+        if "' " in payloads_section or "OR" in payloads_section.upper():
+            return {
+                "hint": "You're on the right track with special characters! Think about how a single quote interacts with the SQL query structure. Can you make the WHERE clause always evaluate to true?",
+                "analysis": "Student is experimenting with SQL-related characters.",
+            }
+        return {
+            "hint": "Look at how the login form data gets placed into the SQL query. What would happen if your input contained characters that have special meaning in SQL, like a single quote?",
+            "analysis": "Student has made attempts but hasn't tried SQL injection payloads yet.",
+        }
+
     return {"text": "[Gemma API key not configured - using local fallback]"}
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences (```json ... ```) that Gemma often wraps around JSON."""
+    import re
+    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    return match.group(1).strip() if match else text.strip()
 
 
 def _extract_section(text: str, start_marker: str, end_marker: str) -> str:

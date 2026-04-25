@@ -13,7 +13,25 @@ class FakeUsersCollection:
         return SimpleNamespace(inserted_id=doc["session_id"])
 
     async def find_one(self, query):
-        return self.docs.get(query["session_id"])
+        if "session_id" in query:
+            return self.docs.get(query["session_id"])
+        if "email" in query:
+            for doc in self.docs.values():
+                if doc.get("email") == query["email"]:
+                    return doc
+        if "google_sub" in query:
+            for doc in self.docs.values():
+                if doc.get("google_sub") == query["google_sub"]:
+                    return doc
+        return None
+
+    async def update_one(self, query, update):
+        doc = await self.find_one(query)
+        if not doc:
+            return SimpleNamespace(matched_count=0, modified_count=0)
+        for key, value in update.get("$set", {}).items():
+            doc[key] = value
+        return SimpleNamespace(matched_count=1, modified_count=1)
 
 
 class FakeDatabase:
@@ -108,3 +126,50 @@ def test_me_returns_anonymous_without_session(client):
 
     assert response.status_code == 200
     assert response.json() == {"authenticated": False}
+
+
+def test_google_client_id_reports_configuration(client, monkeypatch):
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(google_client_id="test-client-id"),
+    )
+
+    response = client.get("/api/auth/google/client-id")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "configured": True,
+        "client_id": "test-client-id",
+    }
+
+
+def test_google_login_creates_user_and_sets_cookie(client, monkeypatch):
+    fake_db = FakeDatabase()
+
+    async def fake_verify_google_credential(credential, client_id):
+        return {
+            "sub": "google-user-123",
+            "email": "alexis@example.com",
+            "name": "Alexis",
+            "picture": "https://example.com/avatar.png",
+        }
+
+    monkeypatch.setattr(auth, "get_db", lambda: fake_db)
+    monkeypatch.setattr(
+        auth,
+        "get_settings",
+        lambda: SimpleNamespace(google_client_id="test-client-id", session_max_age=86400),
+    )
+    monkeypatch.setattr(auth, "_verify_google_credential", fake_verify_google_credential)
+
+    response = client.post("/api/auth/google", json={"credential": "token"})
+
+    assert response.status_code == 200
+    assert response.cookies.get("session_id")
+    assert response.json()["auth_provider"] == "google"
+
+    saved_user = next(iter(fake_db.users.docs.values()))
+    assert saved_user["google_sub"] == "google-user-123"
+    assert saved_user["email"] == "alexis@example.com"
+    assert saved_user["auth_provider"] == "google"

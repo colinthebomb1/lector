@@ -19,8 +19,11 @@ from app.services.attack_session import (
     start_attack_session,
     get_attack_session,
     stop_attack_session,
+    record_payload,
+    get_payloads,
 )
 from app.services.challenge_loader import get_challenge
+from app.services.gemma import generate_attack_hint
 
 router = APIRouter(prefix="/api/attack", tags=["attack"])
 
@@ -110,6 +113,76 @@ async def submit_flag(
     }
 
 
+@router.post("/{challenge_id}/hint")
+async def request_attack_hint(
+    challenge_id: str, user: dict = Depends(require_session)
+):
+    """Generate an AI hint based on the user's attempted payloads."""
+    challenge = get_challenge(challenge_id)
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    session = get_attack_session(user["session_id"], challenge_id)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="No active attack session. Start one first.",
+        )
+
+    payloads = get_payloads(user["session_id"], challenge_id)
+    payload_dicts = [
+        {
+            "path": p.path,
+            "method": p.method,
+            "form_data": p.form_data,
+            "response_status": p.response_status,
+        }
+        for p in payloads
+    ]
+
+    vuln_code = ""
+    for filename, content in challenge.code_files.items():
+        vuln_code += f"# --- {filename} ---\n{content}\n\n"
+
+    hint_tiers = [t.model_dump() for t in challenge.metadata.hint_tiers]
+
+    result = await generate_attack_hint(
+        challenge_name=challenge.metadata.name,
+        scenario=challenge.scenario,
+        vulnerable_code=vuln_code,
+        hint_tiers=hint_tiers,
+        attempted_payloads=payload_dicts,
+    )
+
+    return {
+        "hint": result.get("hint", result.get("text", "")),
+        "analysis": result.get("analysis", ""),
+        "attempts_analyzed": len(payload_dicts),
+    }
+
+
+@router.get("/{challenge_id}/payloads")
+async def get_payload_history(
+    challenge_id: str, user: dict = Depends(require_session)
+):
+    """Return the user's attempted payloads for this attack session."""
+    payloads = get_payloads(user["session_id"], challenge_id)
+    return {
+        "challenge_id": challenge_id,
+        "count": len(payloads),
+        "payloads": [
+            {
+                "path": p.path,
+                "method": p.method,
+                "form_data": p.form_data,
+                "response_status": p.response_status,
+                "timestamp": p.timestamp,
+            }
+            for p in payloads
+        ],
+    }
+
+
 @router.api_route(
     "/{challenge_id}/proxy/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -145,6 +218,25 @@ async def proxy_to_container(
             )
         except httpx.ConnectError:
             raise HTTPException(status_code=502, detail="Container app not responding")
+
+    if request.method == "POST" and body:
+        content_type = request.headers.get("content-type", "")
+        form_data: dict[str, str] = {}
+        if "application/x-www-form-urlencoded" in content_type:
+            from urllib.parse import parse_qs
+            for k, v in parse_qs(body.decode("utf-8", errors="replace")).items():
+                form_data[k] = v[0] if v else ""
+        elif "application/json" in content_type:
+            import json
+            try:
+                form_data = json.loads(body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+        if form_data:
+            record_payload(
+                user["session_id"], challenge_id, path, request.method,
+                form_data, resp.status_code,
+            )
 
     excluded_headers = {"transfer-encoding", "content-encoding", "content-length"}
     response_headers = {
