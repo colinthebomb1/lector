@@ -20,9 +20,29 @@ class FakeUsersCollection:
         return None
 
 
+class _EmptyAsyncCursor:
+    def sort(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+class FakeSubmissionsCollection:
+    def find(self, *args, **kwargs):
+        return _EmptyAsyncCursor()
+
+
 class FakeDatabase:
     def __init__(self, docs=None):
         self.users = FakeUsersCollection(docs)
+        self.submissions = FakeSubmissionsCollection()
 
 
 def test_signup_normalizes_email_sets_session_cookie_and_persists_user(client, monkeypatch):
@@ -173,7 +193,9 @@ def test_me_returns_authenticated_user_from_signup_session(client, monkeypatch):
     assert response.json() == {
         "authenticated": True,
         "nickname": "Ada",
+        "name": "Ada",
         "email": "ada@example.com",
         "challenges_completed": [],
         "total_score": 0,
+        "streak": 0,
     }
