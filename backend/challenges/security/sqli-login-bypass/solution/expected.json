@@ -7,7 +7,7 @@
   },
   "exploit": {
     "method": "Inject into username field to make WHERE clause always true",
-    "payload_example": "' OR '1'='1",
+    "payload_example": "' OR '1'='1' -- ",
     "effect": "Bypasses authentication, logs in as admin (first row)"
   },
   "fix": {

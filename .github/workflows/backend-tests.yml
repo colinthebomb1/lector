@@ -4,7 +4,26 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      challenge_e2e: ${{ steps.filter.outputs.challenge_e2e }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect challenge changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            challenge_e2e:
+              - 'backend/challenges/**'
+              - 'backend/tests/test_attack_e2e.py'
+              - '.github/workflows/backend-tests.yml'
+
   test:
+    needs: changes
     runs-on: ubuntu-latest
 
     defaults:
@@ -26,4 +45,30 @@ jobs:
       - name: Run backend tests
         env:
           PYTHONPATH: .
-        run: pytest -q
+        run: pytest -q -m "not e2e"
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.challenge_e2e == 'true'
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run SQLi challenge E2E test
+        env:
+          PYTHONPATH: .
+        run: pytest -q -m e2e tests/test_attack_e2e.py

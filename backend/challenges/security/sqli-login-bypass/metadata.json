@@ -10,6 +10,6 @@
   "hint_tiers": [
     {"tier": 1, "text": "Look closely at how user input reaches the SQL query. What happens if the input contains a single quote?"},
     {"tier": 2, "text": "This is called SQL injection. The query uses f-string formatting, so your input becomes part of the SQL. Try crafting input that changes the query's logic."},
-    {"tier": 3, "text": "Try entering ' OR '1'='1 as the username. This makes the WHERE clause always true, logging you in as the first user (admin)."}
+    {"tier": 3, "text": "Try entering ' OR '1'='1' --  as the username. The trailing comment cuts off the password check, so the WHERE clause becomes true and logs you in as admin."}
   ]
 }
