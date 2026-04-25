@@ -988,7 +988,7 @@ function DefendWorkspace({
           </div>
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="px-4 py-2 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1 max-w-md">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <button
                     type="button"
@@ -1016,7 +1016,7 @@ function DefendWorkspace({
                 <select
                   value={selectedEditorFile}
                   onChange={(e) => onEditorFileSelect(e.target.value)}
-                  className="mt-1 w-full rounded border border-border/80 bg-background/85 px-3 py-1.5 font-mono text-xs text-foreground focus:outline-none focus:border-accent"
+                  className="mt-1 h-8 w-[200px] max-w-full rounded border border-border/80 bg-background/85 px-2.5 py-1 font-mono text-[11px] text-foreground focus:outline-none focus:border-accent"
                   title="Workspace file"
                 >
                   {codeFileNames.map((name) => (
