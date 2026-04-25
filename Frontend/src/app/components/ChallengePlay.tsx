@@ -14,6 +14,9 @@ type Status =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
+const MIN_PANE_PERCENT = 20;
+const MAX_PANE_PERCENT = 80;
+
 export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePlayProps) {
   const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
@@ -25,7 +28,11 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
   const [submittingFlag, setSubmittingFlag] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [loadingHint, setLoadingHint] = useState(false);
-  const [showCode, setShowCode] = useState(true);
+  const [scenarioOpen, setScenarioOpen] = useState(true);
+  const [splitPercent, setSplitPercent] = useState(45);
+  const [dragging, setDragging] = useState(false);
+
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
 
   const stopSession = useCallback(async () => {
@@ -107,15 +114,44 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
     }
   }, [challengeId]);
 
+  // Drag-to-resize between source code and browser panes.
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const container = splitContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const offset = e.clientX - rect.left;
+      const percent = (offset / rect.width) * 100;
+      const clamped = Math.max(MIN_PANE_PERCENT, Math.min(MAX_PANE_PERCENT, percent));
+      setSplitPercent(clamped);
+    };
+    const handleUp = () => setDragging(false);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragging]);
+
+  const handleDoubleClickDivider = useCallback(() => setSplitPercent(45), []);
+
   const codeFileNames = useMemo(
     () => (challenge ? Object.keys(challenge.code_files) : []),
     [challenge],
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="sticky top-0 z-20 bg-background/85 backdrop-blur border-b border-border">
-        <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-4">
+    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
+      <header className="flex-shrink-0 bg-background/85 backdrop-blur border-b border-border">
+        <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -129,6 +165,14 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
             <span className="text-foreground truncate">{challenge?.name ?? 'Loading...'}</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setScenarioOpen((s) => !s)}
+              className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition-colors"
+              title="Toggle scenario panel"
+            >
+              {scenarioOpen ? 'Hide scenario' : 'Show scenario'}
+            </button>
             <span
               className={`text-[10px] uppercase tracking-wider px-2 py-1 border rounded ${
                 status.kind === 'ready'
@@ -158,75 +202,80 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 md:px-8 py-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <section className="flex flex-col gap-4 min-w-0">
-          <div className="border border-border rounded p-5 bg-card/40">
-            <h2 className="text-sm uppercase tracking-wider text-muted-foreground mb-3">
-              Scenario
-            </h2>
-            <ScenarioBody text={challenge?.scenario ?? ''} />
-          </div>
+      <main className="flex-1 flex min-h-0">
+        <ScenarioSidebar
+          open={scenarioOpen}
+          challenge={challenge}
+          onToggle={() => setScenarioOpen((s) => !s)}
+        />
 
-          {codeFileNames.length > 0 && (
-            <div className="border border-border rounded bg-card/40">
-              <button
-                type="button"
-                onClick={() => setShowCode((s) => !s)}
-                className="w-full flex items-center justify-between px-5 py-3 text-sm uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <span>Source code</span>
-                <span className="text-xs">{showCode ? 'Hide ▾' : 'Show ▸'}</span>
-              </button>
-              {showCode && (
-                <div className="px-5 pb-5">
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {codeFileNames.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => setActiveFile(name)}
-                        className={`text-xs font-mono px-2 py-1 rounded border transition-colors ${
-                          activeFile === name
-                            ? 'border-accent text-accent bg-accent/10'
-                            : 'border-border text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                  {activeFile && (
-                    <div className="max-h-[420px] overflow-auto">
-                      <CodeSnippet code={challenge!.code_files[activeFile] ?? ''} />
-                    </div>
-                  )}
-                </div>
+        <div ref={splitContainerRef} className="flex-1 flex min-w-0 relative">
+          {/* Source code pane */}
+          <div
+            className="flex flex-col min-w-0 border-r border-border"
+            style={{ width: `${splitPercent}%` }}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0">
+              <span className="uppercase tracking-wider">Source</span>
+              <div className="flex flex-wrap gap-1 justify-end">
+                {codeFileNames.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setActiveFile(name)}
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                      activeFile === name
+                        ? 'border-accent text-accent bg-accent/10'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-card/30">
+              {activeFile && challenge ? (
+                <CodeSnippet code={challenge.code_files[activeFile] ?? ''} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No source files loaded.</p>
               )}
             </div>
-          )}
+          </div>
 
-          {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
-            <details className="border border-border rounded p-4 bg-card/40 text-sm">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Static hints ({challenge.hint_tiers.length} tier
-                {challenge.hint_tiers.length === 1 ? '' : 's'})
-              </summary>
-              <ol className="mt-3 space-y-3 list-decimal list-inside text-foreground/80">
-                {challenge.hint_tiers.map((h) => (
-                  <li key={h.tier}>{h.text}</li>
-                ))}
-              </ol>
-            </details>
-          )}
-        </section>
+          {/* Drag handle */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDoubleClick={handleDoubleClickDivider}
+            className={`relative flex-shrink-0 w-1.5 cursor-col-resize group ${
+              dragging ? 'bg-accent' : 'bg-border hover:bg-accent/60'
+            } transition-colors`}
+            title="Drag to resize • double-click to reset"
+          >
+            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-0.5 pointer-events-none">
+              <span className="block w-0.5 h-1 bg-background/80 rounded" />
+              <span className="block w-0.5 h-1 bg-background/80 rounded" />
+              <span className="block w-0.5 h-1 bg-background/80 rounded" />
+            </span>
+          </div>
 
-        <section className="flex flex-col gap-4 min-w-0">
-          <div className="border border-border rounded overflow-hidden bg-card/40 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground">
+          {/* Browser + flag pane */}
+          <div
+            className="flex flex-col min-w-0"
+            style={{ width: `${100 - splitPercent}%` }}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0 gap-3">
               <span className="font-mono truncate">{proxyUrl ?? 'about:blank'}</span>
-              <span className="uppercase tracking-wider">target app</span>
+              <span className="uppercase tracking-wider flex-shrink-0">Target app</span>
             </div>
-            <div className="relative bg-black" style={{ minHeight: '460px' }}>
+            <div className="relative bg-black flex-1 min-h-0">
+              {/* Block iframe pointer events while dragging so the iframe doesn't swallow mousemove */}
+              {dragging && <div className="absolute inset-0 z-10" />}
               {status.kind !== 'ready' && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
                   {status.kind === 'error' ? status.message : 'Spinning up sandbox container...'}
@@ -238,68 +287,55 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
                   src={proxyUrl}
                   title="Vulnerable application"
                   className="w-full h-full block"
-                  style={{ minHeight: '460px', border: 'none' }}
+                  style={{ border: 'none' }}
                   sandbox="allow-forms allow-scripts allow-same-origin"
                 />
               )}
             </div>
-          </div>
 
-          <div className="border border-border rounded p-5 bg-card/40 space-y-3">
-            <div>
-              <h3 className="text-sm uppercase tracking-wider text-muted-foreground mb-1">
-                Capture the flag
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Once you've broken in, paste the flag from the admin dashboard here.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={flag}
-                onChange={(e) => setFlag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSubmitFlag();
-                }}
-                placeholder="FLAG{...}"
-                className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-accent transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => void handleSubmitFlag()}
-                disabled={submittingFlag || !flag.trim()}
-                className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {submittingFlag ? 'Checking...' : 'Submit'}
-              </button>
-            </div>
-            {flagFeedback && (
-              <p
-                className={`text-xs px-3 py-2 rounded border ${
-                  flagFeedback.ok
-                    ? 'text-green-400 border-green-400/30 bg-green-400/5'
-                    : 'text-red-400 border-red-400/30 bg-red-400/5'
-                }`}
-              >
-                {flagFeedback.message}
-              </p>
-            )}
-
-            <div className="pt-2 border-t border-border">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Stuck?
+            <div className="flex-shrink-0 border-t border-border bg-card/40 px-4 py-3 space-y-2 max-h-[40%] overflow-auto">
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground flex-shrink-0">
+                  Flag
                 </span>
+                <input
+                  type="text"
+                  value={flag}
+                  onChange={(e) => setFlag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSubmitFlag();
+                  }}
+                  placeholder="FLAG{...}"
+                  className="flex-1 min-w-0 bg-background border border-border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-accent transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitFlag()}
+                  disabled={submittingFlag || !flag.trim()}
+                  className="px-3 py-1.5 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                >
+                  {submittingFlag ? '...' : 'Submit'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleHint()}
                   disabled={loadingHint || status.kind !== 'ready'}
-                  className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-xs uppercase tracking-wider border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 >
-                  {loadingHint ? 'Thinking...' : 'Ask for a hint'}
+                  {loadingHint ? '...' : 'Hint'}
                 </button>
               </div>
+              {flagFeedback && (
+                <p
+                  className={`text-xs px-3 py-1.5 rounded border ${
+                    flagFeedback.ok
+                      ? 'text-green-400 border-green-400/30 bg-green-400/5'
+                      : 'text-red-400 border-red-400/30 bg-red-400/5'
+                  }`}
+                >
+                  {flagFeedback.message}
+                </p>
+              )}
               {hint && (
                 <p className="text-xs text-foreground/80 bg-background border border-border rounded px-3 py-2 whitespace-pre-wrap">
                   {hint}
@@ -307,9 +343,67 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
               )}
             </div>
           </div>
-        </section>
+        </div>
       </main>
     </div>
+  );
+}
+
+interface ScenarioSidebarProps {
+  open: boolean;
+  challenge: ChallengeDetail | null;
+  onToggle: () => void;
+}
+
+function ScenarioSidebar({ open, challenge, onToggle }: ScenarioSidebarProps) {
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex-shrink-0 w-9 border-r border-border bg-card/40 hover:bg-card/60 hover:text-accent text-muted-foreground transition-colors flex items-center justify-center"
+        title="Show scenario"
+        aria-label="Show scenario"
+      >
+        <span className="rotate-180" style={{ writingMode: 'vertical-rl' }}>
+          ◀ Scenario
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <aside className="flex-shrink-0 w-[340px] border-r border-border bg-card/30 flex flex-col min-h-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground">Scenario</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          title="Hide scenario"
+          aria-label="Hide scenario"
+        >
+          ◀
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto px-4 py-4">
+        <h2 className="text-base text-foreground mb-3">{challenge?.name ?? '...'}</h2>
+        <ScenarioBody text={challenge?.scenario ?? ''} />
+
+        {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
+          <details className="mt-4 border-t border-border pt-3">
+            <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground">
+              Static hints ({challenge.hint_tiers.length})
+            </summary>
+            <ol className="mt-3 space-y-3 list-decimal list-inside text-foreground/80 text-sm">
+              {challenge.hint_tiers.map((h) => (
+                <li key={h.tier}>{h.text}</li>
+              ))}
+            </ol>
+          </details>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -322,14 +416,14 @@ function ScenarioBody({ text }: { text: string }) {
       {text.split(/\n{2,}/).map((para, i) => {
         if (para.startsWith('## ')) {
           return (
-            <h3 key={i} className="text-base text-foreground mt-3">
+            <h3 key={i} className="text-sm uppercase tracking-wider text-foreground mt-4">
               {para.replace(/^##\s+/, '')}
             </h3>
           );
         }
         if (para.startsWith('# ')) {
           return (
-            <h2 key={i} className="text-lg text-foreground mt-3">
+            <h2 key={i} className="text-base text-foreground mt-4">
               {para.replace(/^#\s+/, '')}
             </h2>
           );
