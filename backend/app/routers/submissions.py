@@ -5,6 +5,7 @@ from app.models import (
     PatchSubmission,
     SummarySubmission,
     AnnotationSubmission,
+    CodeReviewSubmission,
     Submission,
     SubmissionPhase,
     SubmissionType,
@@ -106,6 +107,75 @@ async def submit_patch(body: PatchSubmission, user: dict = Depends(require_sessi
     response = result.model_dump()
     response["score_awarded"] = score_awarded
     return response
+
+
+@router.post("/code-review")
+async def submit_code_review(
+    body: CodeReviewSubmission, user: dict = Depends(require_session)
+):
+    """Record a client-graded code-review submission and award points on first pass.
+
+    Code-review challenges are graded entirely on the client (their data
+    lives in the frontend bundle), so the server trusts the verdict the
+    client reports. Points are only awarded once per challenge per user
+    via an atomic `$addToSet` guard, so resubmits do not double-score.
+    """
+    grade = GradeResult(
+        status=GradeStatus.PASSED if body.passed else GradeStatus.FAILED,
+        message=body.message,
+    )
+
+    submission = Submission(
+        user_id=user["session_id"],
+        challenge_id=body.challenge_id,
+        submission_type=SubmissionType.CODE_REVIEW,
+        phase=SubmissionPhase.REVIEW,
+        payload=body.model_dump(),
+        result=grade,
+    )
+
+    score_awarded = 0
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
+
+        if body.passed:
+            update = await db.users.update_one(
+                {
+                    "session_id": user["session_id"],
+                    "challenges_completed": {"$ne": body.challenge_id},
+                },
+                {
+                    "$addToSet": {"challenges_completed": body.challenge_id},
+                    "$inc": {"total_score": 100},
+                },
+            )
+            if update.matched_count == 0:
+                # Already complete — make sure the challenge id is present
+                # but do not double-score.
+                await db.users.update_one(
+                    {"session_id": user["session_id"]},
+                    {"$addToSet": {"challenges_completed": body.challenge_id}},
+                )
+            else:
+                score_awarded = 100
+
+        if score_awarded:
+            await db.submissions.update_one(
+                {
+                    "user_id": user["session_id"],
+                    "challenge_id": body.challenge_id,
+                    "submission_type": SubmissionType.CODE_REVIEW,
+                    "created_at": submission.created_at,
+                },
+                {"$set": {"score_awarded": score_awarded}},
+            )
+
+    return {
+        "passed": body.passed,
+        "message": body.message,
+        "score_awarded": score_awarded,
+    }
 
 
 @router.post("/annotation")

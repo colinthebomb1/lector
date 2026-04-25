@@ -10,6 +10,7 @@ from app.models.submission import (
     SummarySubmission,
     AnnotationSubmission,
     Annotation,
+    CodeReviewSubmission,
 )
 from app.models.user import User
 
@@ -28,5 +29,6 @@ __all__ = [
     "SummarySubmission",
     "AnnotationSubmission",
     "Annotation",
+    "CodeReviewSubmission",
     "User",
 ]

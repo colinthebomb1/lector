@@ -20,6 +20,7 @@ interface CodeReviewPlayProps {
   onExit: () => void;
   onProfileClick: () => void;
   onLoggedOut: () => void;
+  onCompleted?: () => void;
 }
 
 export function CodeReviewPlay({
@@ -28,6 +29,7 @@ export function CodeReviewPlay({
   onExit,
   onProfileClick,
   onLoggedOut,
+  onCompleted,
 }: CodeReviewPlayProps) {
   const reviewChallenge = useMemo(
     () => getCodeReviewChallenge(challenge.id) ?? null,
@@ -64,6 +66,8 @@ export function CodeReviewPlay({
   const [loadingAiHint, setLoadingAiHint] = useState(false);
   const [aiHintHistory, setAiHintHistory] = useState<string[]>([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [scoreAwarded, setScoreAwarded] = useState<number | null>(null);
+  const [persistError, setPersistError] = useState<string | null>(null);
 
   // Reset editor + grading state whenever the active variant changes —
   // either because the user picked a different challenge or a different
@@ -79,6 +83,8 @@ export function CodeReviewPlay({
     setLoadingAiHint(false);
     setAiHintHistory([]);
     setShowSuccessModal(false);
+    setScoreAwarded(null);
+    setPersistError(null);
   }, [variant]);
 
   useEffect(() => {
@@ -131,18 +137,42 @@ export function CodeReviewPlay({
     setHintIndex((idx) => idx + 1);
   }, [hintIndex, variant]);
 
-  const handleSubmit = useCallback(() => {
-    if (!variant) return;
+  const handleSubmit = useCallback(async () => {
+    if (!reviewChallenge || !variant) return;
     setGrading(true);
     setVerdict(null);
-    // Async pause so the spinner is visible — keeps grading semantics consistent
-    // with the security/defend grader UX even though this check is local.
-    setTimeout(() => {
-      const result = variant.solutionCheck(code);
-      setVerdict(result);
-      setGrading(false);
-    }, 250);
-  }, [code, variant]);
+    setScoreAwarded(null);
+    setPersistError(null);
+    // Brief async pause so the spinner is visible — keeps grading semantics
+    // consistent with the security/defend grader UX even though this check
+    // is local.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const result = variant.solutionCheck(code);
+    setVerdict(result);
+    setGrading(false);
+
+    if (!result.passed) return;
+
+    // Persist the pass to the backend so the user actually gets credit.
+    // Resubmits are atomically guarded server-side so points are awarded
+    // at most once per challenge.
+    try {
+      const persisted = await api.submitCodeReview({
+        challenge_id: reviewChallenge.summary.id,
+        language: variant.language,
+        code,
+        passed: true,
+        message: result.message,
+      });
+      setScoreAwarded(persisted.score_awarded ?? 0);
+      onCompleted?.();
+    } catch (err) {
+      setPersistError(
+        err instanceof Error ? err.message : 'Could not save your score.',
+      );
+    }
+  }, [code, onCompleted, reviewChallenge, variant]);
 
   const handleAiHint = useCallback(async () => {
     if (!reviewChallenge || !variant) return;
@@ -441,6 +471,8 @@ export function CodeReviewPlay({
         <CodeReviewSuccessModal
           challengeName={challenge.name}
           feedback={verdict.message}
+          scoreAwarded={scoreAwarded}
+          persistError={persistError}
           onReturnToDashboard={onExit}
           onDismiss={() => setShowSuccessModal(false)}
         />
@@ -452,6 +484,8 @@ export function CodeReviewPlay({
 interface CodeReviewSuccessModalProps {
   challengeName: string;
   feedback: string;
+  scoreAwarded: number | null;
+  persistError: string | null;
   onReturnToDashboard: () => void;
   onDismiss: () => void;
 }
@@ -459,6 +493,8 @@ interface CodeReviewSuccessModalProps {
 function CodeReviewSuccessModal({
   challengeName,
   feedback,
+  scoreAwarded,
+  persistError,
   onReturnToDashboard,
   onDismiss,
 }: CodeReviewSuccessModalProps) {
@@ -506,6 +542,32 @@ function CodeReviewSuccessModal({
             </p>
             <p className="text-sm text-foreground/90">{feedback}</p>
           </div>
+          {scoreAwarded !== null && (
+            <div
+              className={`rounded border px-4 py-3 ${
+                scoreAwarded > 0
+                  ? 'border-amber-300/40 bg-amber-300/5'
+                  : 'border-border/70 bg-background/40'
+              }`}
+            >
+              <p className="text-[10px] uppercase tracking-[0.18em] text-amber-300 mb-1">
+                Score
+              </p>
+              <p className="text-sm text-foreground/90">
+                {scoreAwarded > 0
+                  ? `+${scoreAwarded} pts added to your total.`
+                  : 'Already solved earlier — no additional points awarded.'}
+              </p>
+            </div>
+          )}
+          {persistError && (
+            <div className="rounded border border-red-400/40 bg-red-400/5 px-4 py-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-red-300 mb-1">
+                Score Not Saved
+              </p>
+              <p className="text-sm text-foreground/90">{persistError}</p>
+            </div>
+          )}
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <button
               type="button"
