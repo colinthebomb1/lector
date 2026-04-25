@@ -57,6 +57,9 @@ async def connect_db() -> None:
         await _db.submissions.create_index(
             [("user_id", 1), ("challenge_id", 1), ("created_at", -1)]
         )
+        await _db.attack_payloads.create_index(
+            [("user_id", 1), ("challenge_id", 1), ("timestamp", -1)]
+        )
         await _db.gemma_cache.create_index("created_at", expireAfterSeconds=604800)
     except Exception:
         _client = None

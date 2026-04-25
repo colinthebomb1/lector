@@ -54,6 +54,15 @@ export function ChallengePlay({
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
 
+  const refreshOverviewData = useCallback(async () => {
+    const [historyResult, payloadHistory] = await Promise.all([
+      api.submissionHistory(challengeId),
+      api.attackPayloads(challengeId),
+    ]);
+    setHistory(historyResult);
+    setPayloads(payloadHistory.payloads);
+  }, [challengeId]);
+
   const stopSession = useCallback(async () => {
     if (stoppedRef.current) return;
     stoppedRef.current = true;
@@ -128,6 +137,7 @@ export function ChallengePlay({
     try {
       const result = await api.submitFlag(challengeId, flag.trim());
       setFlagFeedback({ ok: result.accepted, message: result.message });
+      await refreshOverviewData();
       if (result.accepted) onCompleted();
     } catch (err) {
       setFlagFeedback({
@@ -137,7 +147,7 @@ export function ChallengePlay({
     } finally {
       setSubmittingFlag(false);
     }
-  }, [challengeId, flag, onCompleted]);
+  }, [challengeId, flag, onCompleted, refreshOverviewData]);
 
   const handleHint = useCallback(async () => {
     setLoadingHint(true);
@@ -210,8 +220,11 @@ export function ChallengePlay({
               <button
                 type="button"
                 onClick={async () => {
-                  await stopSession();
-                  setProxyUrl(null);
+                  try {
+                    await refreshOverviewData();
+                  } catch {
+                    // Keep the workspace usable even if overview refresh fails.
+                  }
                   setFlag('');
                   setHint(null);
                   setFlagFeedback(null);
@@ -448,6 +461,10 @@ function OverviewStage({
 }: OverviewStageProps) {
   const progress = history?.progress;
   const recentSubmissions = history?.submissions.slice(0, 5) ?? [];
+  const derivedScore =
+    (progress?.attack_captured ? 50 : 0) +
+    (progress?.defend_passed ? 100 : 0);
+  const displayScore = Math.max(progress?.total_score_awarded ?? 0, derivedScore);
 
   return (
     <div className="h-full overflow-auto bg-background">
@@ -500,19 +517,26 @@ function OverviewStage({
               {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
-                    Static Hint Ladder
+                    Hints
                   </p>
                   <div className="space-y-3">
                     {challenge.hint_tiers.map((hintTier) => (
-                      <div
+                      <details
                         key={hintTier.tier}
-                        className="border border-border rounded px-3 py-3 bg-background/60"
+                        className="border border-border rounded bg-background/60 overflow-hidden group"
                       >
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">
-                          Tier {hintTier.tier}
-                        </p>
-                        <p className="text-sm text-foreground/80">{hintTier.text}</p>
-                      </div>
+                        <summary className="list-none cursor-pointer px-3 py-3 flex items-center justify-between gap-3">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                            Hint {hintTier.tier}
+                          </span>
+                          <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
+                            ▾
+                          </span>
+                        </summary>
+                        <div className="px-3 pb-3 border-t border-border">
+                          <p className="text-sm text-foreground/80 pt-3">{hintTier.text}</p>
+                        </div>
+                      </details>
                     ))}
                   </div>
                 </div>
@@ -528,22 +552,33 @@ function OverviewStage({
                 </p>
               </div>
               <div className="px-4 py-4 grid grid-cols-2 gap-3">
-                <ProgressTile label="Read Gate" value={progress?.summary_passed ? 'Passed' : 'Pending'} />
+                <ProgressTile
+                  label="Reading Summary"
+                  value={progress?.summary_passed ? 'Passed' : 'Pending'}
+                />
                 <ProgressTile label="Attack" value={progress?.attack_captured ? 'Captured' : 'Pending'} />
                 <ProgressTile label="Defend" value={progress?.defend_passed ? 'Passed' : 'Pending'} />
                 <ProgressTile label="Attempts" value={String(progress?.attempt_count ?? 0)} />
               </div>
-              {progress && (
-                <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
-                  <p>Total score awarded here: {progress.total_score_awarded}</p>
+              <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
+                <p>
+                  Reading Summary tracks whether you passed the short comprehension check for
+                  this challenge before diving into attack or defense.
+                </p>
+                {progress ? (
+                  <>
+                  <p>Total score awarded here: {displayScore}</p>
                   <p>
                     Last activity:{' '}
                     {progress.last_submission_at
                       ? new Date(progress.last_submission_at).toLocaleString()
                       : 'No submissions yet'}
                   </p>
-                </div>
-              )}
+                  </>
+                ) : (
+                  <p>No submissions yet.</p>
+                )}
+              </div>
             </section>
 
             <section className="border border-border rounded-lg bg-card/30 overflow-hidden">
@@ -642,13 +677,20 @@ function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
 
 function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
   const fields = Object.entries(payload.form_data || {});
+  const statusClass =
+    payload.response_status >= 400
+      ? 'text-red-400 border-red-400/30 bg-red-400/5'
+      : payload.response_status >= 300
+      ? 'text-sky-400 border-sky-400/30 bg-sky-400/5'
+      : 'text-green-400 border-green-400/30 bg-green-400/5';
+
   return (
     <div className="px-4 py-3 bg-background/30">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
           {payload.method} /{payload.path}
         </p>
-        <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border border-border">
+        <span className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${statusClass}`}>
           {payload.response_status}
         </span>
       </div>
