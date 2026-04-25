@@ -1,0 +1,24 @@
+{
+  "id": "path-traversal-log-export",
+  "name": "Path Traversal: Log Export",
+  "track": "security",
+  "difficulty": "medium",
+  "category": "file-access",
+  "description": "Inspect file path handling in a downloadable log export endpoint.",
+  "estimated_minutes": 30,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Watch for filename or path parameters joined directly to base directories."
+    },
+    {
+      "tier": 2,
+      "text": "Traversal patterns often use ../ segments or encoded variants."
+    },
+    {
+      "tier": 3,
+      "text": "Resolve and verify final paths stay inside an allowed base directory."
+    }
+  ],
+  "flag": "FLAG{mock_path_traversal_log_export}"
+}

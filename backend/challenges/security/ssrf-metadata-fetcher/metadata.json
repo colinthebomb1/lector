@@ -1,0 +1,24 @@
+{
+  "id": "ssrf-metadata-fetcher",
+  "name": "SSRF: Metadata Fetcher",
+  "track": "security",
+  "difficulty": "hard",
+  "category": "ssrf",
+  "description": "Analyze server-side URL fetching in an internal diagnostics feature.",
+  "estimated_minutes": 40,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Any user-controlled URL fetched by the backend is SSRF territory."
+    },
+    {
+      "tier": 2,
+      "text": "Block internal IP ranges and metadata service hostnames explicitly."
+    },
+    {
+      "tier": 3,
+      "text": "A safe pattern is outbound allow-listing plus strict scheme and host validation."
+    }
+  ],
+  "flag": "FLAG{mock_ssrf_metadata_fetcher}"
+}

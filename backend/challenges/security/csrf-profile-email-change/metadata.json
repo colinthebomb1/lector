@@ -1,0 +1,24 @@
+{
+  "id": "csrf-profile-email-change",
+  "name": "CSRF: Profile Email Change",
+  "track": "security",
+  "difficulty": "easy",
+  "category": "csrf",
+  "description": "Assess whether state-changing profile actions require CSRF defenses.",
+  "estimated_minutes": 25,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Review state-changing endpoints for anti-CSRF token validation."
+    },
+    {
+      "tier": 2,
+      "text": "Cookie-based auth without same-site protections is a common weak point."
+    },
+    {
+      "tier": 3,
+      "text": "Pair CSRF tokens with strict origin checks for sensitive updates."
+    }
+  ],
+  "flag": "FLAG{mock_csrf_profile_email_change}"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "idor-invoice-download",
+  "name": "IDOR: Invoice Download Endpoint",
+  "track": "security",
+  "difficulty": "medium",
+  "category": "access-control",
+  "description": "Review object-level authorization around invoice retrieval.",
+  "estimated_minutes": 30,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Check whether ownership is validated before returning invoice data."
+    },
+    {
+      "tier": 2,
+      "text": "Changing numeric IDs in request paths is often enough to expose IDORs."
+    },
+    {
+      "tier": 3,
+      "text": "A fix should enforce tenant or user ownership server-side for every lookup."
+    }
+  ],
+  "flag": "FLAG{mock_idor_invoice_download}"
+}

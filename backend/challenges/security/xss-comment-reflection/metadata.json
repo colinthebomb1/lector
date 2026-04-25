@@ -1,0 +1,24 @@
+{
+  "id": "xss-comment-reflection",
+  "name": "Cross-Site Scripting: Comment Reflection",
+  "track": "security",
+  "difficulty": "easy",
+  "category": "xss",
+  "description": "Explore reflected input handling in a public comment preview flow.",
+  "estimated_minutes": 20,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Look for where unsanitized user input is rendered directly into HTML."
+    },
+    {
+      "tier": 2,
+      "text": "Try payloads that execute JavaScript through common HTML attributes."
+    },
+    {
+      "tier": 3,
+      "text": "A proper fix should escape output by default and only allow trusted markup."
+    }
+  ],
+  "flag": "FLAG{mock_xss_comment_reflection}"
+}
