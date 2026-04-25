@@ -50,9 +50,10 @@ export default function App() {
     return (
       <Auth
         onBackToHome={() => setView('home')}
-        onAuthenticated={async () => {
-          await refreshUser();
+        onAuthenticated={async (authenticatedUser) => {
+          setUser({ authenticated: true, ...authenticatedUser });
           setView('dashboard');
+          void refreshUser();
         }}
       />
     );

@@ -1,6 +1,6 @@
 export const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
-  'http://localhost:8000';
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type Track = 'security' | 'code-review';
@@ -44,6 +44,16 @@ export interface AttackHint {
   hint: string;
   analysis: string;
   attempts_analyzed: number;
+}
+
+export interface PatchResult {
+  status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
+  message?: string;
+  functional_passed?: boolean | null;
+  track_test_passed?: boolean | null;
+  output?: string;
+  elapsed_seconds?: number;
+  score_awarded?: number;
 }
 
 export interface AttackPayloadRecord {
@@ -154,6 +164,11 @@ export const api = {
     request<AttackPayloadHistory>(`/api/attack/${encodeURIComponent(id)}/payloads`),
   submissionHistory: (id: string) =>
     request<SubmissionHistory>(`/api/submissions/history/${encodeURIComponent(id)}`),
+  submitPatch: (id: string, patch: string) =>
+    request<PatchResult>('/api/submissions/patch', {
+      method: 'POST',
+      body: JSON.stringify({ challenge_id: id, patch }),
+    }),
   proxyUrl: (id: string, path = '') =>
     `${API_BASE}/api/attack/${encodeURIComponent(id)}/proxy/${path.replace(/^\//, '')}`,
 };

@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir flask pytest requests
 
-COPY code/app.py /app/app.py
+COPY code/ /app/
 COPY tests/ /app/tests/
 COPY secret/ /app/secret/
 

@@ -46,9 +46,9 @@ async def grade_submission(challenge: Challenge, patch: str) -> GradeResult:
         if not functional.passed:
             return GradeResult(
                 status=GradeStatus.FAILED,
-                message=f"You broke the app: {functional.output}",
+                message="Functional check failed. The app behavior changed; review your patch and try again.",
                 functional_passed=False,
-                output=functional.output,
+                output="",
                 elapsed_seconds=time.monotonic() - start,
             )
 

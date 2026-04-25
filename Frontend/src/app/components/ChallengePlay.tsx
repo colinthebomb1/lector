@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import Editor, { type OnMount } from '@monaco-editor/react';
 import {
   api,
   type AttackPayloadRecord,
   type ChallengeDetail,
   type CurrentUser,
+  type PatchResult,
   type SubmissionHistory,
   type SubmissionRecord,
 } from '../lib/api';
@@ -25,6 +27,8 @@ type Status =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
+type WorkspaceMode = 'attack' | 'defend';
+
 const MIN_PANE_PERCENT = 20;
 const MAX_PANE_PERCENT = 80;
 
@@ -41,6 +45,8 @@ export function ChallengePlay({
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [defendReferenceFile, setDefendReferenceFile] = useState<string | null>(null);
+  const [defendEditorFile, setDefendEditorFile] = useState<string | null>(null);
   const [flag, setFlag] = useState('');
   const [flagFeedback, setFlagFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [submittingFlag, setSubmittingFlag] = useState(false);
@@ -51,6 +57,10 @@ export function ChallengePlay({
   const [history, setHistory] = useState<SubmissionHistory | null>(null);
   const [payloads, setPayloads] = useState<AttackPayloadRecord[]>([]);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode | null>(null);
+  const [editedFiles, setEditedFiles] = useState<Record<string, string>>({});
+  const [submittingPatch, setSubmittingPatch] = useState(false);
+  const [patchResult, setPatchResult] = useState<PatchResult | null>(null);
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
@@ -91,7 +101,12 @@ export function ChallengePlay({
         setHistory(historyResult);
         setPayloads(payloadHistory.payloads);
         const fileNames = Object.keys(detail.code_files);
-        if (fileNames.length > 0) setActiveFile(fileNames[0]);
+        if (fileNames.length > 0) {
+          setActiveFile(fileNames[0]);
+          setDefendReferenceFile(fileNames[0]);
+          setDefendEditorFile(fileNames[0]);
+        }
+        setEditedFiles(detail.code_files);
         setStatus({ kind: 'overview' });
       } catch (err) {
         if (!cancelled) {
@@ -110,6 +125,7 @@ export function ChallengePlay({
   }, [challengeId, stopSession]);
 
   const handleLaunchWorkspace = useCallback(async () => {
+    setWorkspaceMode('attack');
     setHint(null);
     setFlagFeedback(null);
     setStatus({ kind: 'starting' });
@@ -119,6 +135,7 @@ export function ChallengePlay({
       setIframeKey((k) => k + 1);
       setStatus({ kind: 'ready' });
     } catch (err) {
+      setWorkspaceMode(null);
       setStatus({
         kind: 'error',
         message: err instanceof Error ? err.message : 'Failed to start challenge',
@@ -207,8 +224,44 @@ export function ChallengePlay({
     setHint(null);
     setFlagFeedback(null);
     setProxyUrl(null);
-    setStatus({ kind: 'overview' });
+    setPatchResult(null);
+    setWorkspaceMode('defend');
+    setStatus({ kind: 'ready' });
   }, [refreshOverviewData, stopSession]);
+
+  const handleOpenDefendWorkspace = useCallback(() => {
+    setPatchResult(null);
+    setProxyUrl(null);
+    setWorkspaceMode('defend');
+    setStatus({ kind: 'ready' });
+  }, []);
+
+  const handleSubmitPatch = useCallback(async () => {
+    if (!challenge) return;
+    const generatedPatch = buildUnifiedDiff(challenge.code_files, editedFiles);
+    if (!generatedPatch) {
+      setPatchResult({
+        status: 'error',
+        message: 'No code changes to submit yet.',
+      });
+      return;
+    }
+    setSubmittingPatch(true);
+    setPatchResult(null);
+    try {
+      const result = await api.submitPatch(challengeId, generatedPatch);
+      setPatchResult(result);
+      await refreshOverviewData();
+      if (result.status === 'passed') onCompleted();
+    } catch (err) {
+      setPatchResult({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Patch submission failed',
+      });
+    } finally {
+      setSubmittingPatch(false);
+    }
+  }, [challenge, challengeId, editedFiles, onCompleted, refreshOverviewData]);
 
   const handleBackToDashboardFromModal = useCallback(async () => {
     setShowCaptureModal(false);
@@ -245,14 +298,25 @@ export function ChallengePlay({
               <button
                 type="button"
                 onClick={async () => {
-                  try {
-                    await refreshOverviewData();
-                  } catch {
-                    // Keep the workspace usable even if overview refresh fails.
+                  if (workspaceMode === 'attack') {
+                    try {
+                      await refreshOverviewData();
+                    } catch {
+                      // Keep the workspace usable even if overview refresh fails.
+                    }
+                    setFlag('');
+                    setHint(null);
+                    setFlagFeedback(null);
+                    setProxyUrl(null);
+                  } else {
+                    try {
+                      await refreshOverviewData();
+                    } catch {
+                      // Keep the overview available even if refresh fails.
+                    }
+                    setPatchResult(null);
                   }
-                  setFlag('');
-                  setHint(null);
-                  setFlagFeedback(null);
+                  setWorkspaceMode(null);
                   setStatus({ kind: 'overview' });
                 }}
                 className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition-colors"
@@ -275,14 +339,14 @@ export function ChallengePlay({
               {status.kind === 'ready'
                 ? 'Live'
                 : status.kind === 'error'
-                ? 'Error'
-                : status.kind === 'overview'
+                  ? 'Error'
+                  : status.kind === 'overview'
                 ? 'Overview'
-                : status.kind === 'starting'
-                ? 'Starting container...'
-                : 'Loading...'}
+                  : status.kind === 'starting'
+                  ? 'Starting container...'
+                  : 'Loading...'}
             </span>
-            {status.kind === 'ready' ? (
+            {status.kind === 'ready' && workspaceMode === 'attack' ? (
               <button
                 type="button"
                 onClick={() => setIframeKey((k) => k + 1)}
@@ -292,7 +356,7 @@ export function ChallengePlay({
               >
                 Reload
               </button>
-            ) : (
+            ) : workspaceMode !== 'defend' ? (
               <button
                 type="button"
                 onClick={() => void handleLaunchWorkspace()}
@@ -301,7 +365,7 @@ export function ChallengePlay({
               >
                 {status.kind === 'starting' ? 'Opening...' : 'Open Workspace'}
               </button>
-            )}
+            ) : null}
             <UserMenu
               user={user}
               onProfileClick={async () => {
@@ -317,8 +381,9 @@ export function ChallengePlay({
         </div>
       </header>
 
-      <main className="flex-1 min-h-0">
-        {status.kind === 'ready' || status.kind === 'starting' || (status.kind === 'error' && proxyUrl) ? (
+      <main className="flex-1 min-h-0 overflow-hidden">
+        {workspaceMode === 'attack' &&
+        (status.kind === 'ready' || status.kind === 'starting' || (status.kind === 'error' && proxyUrl)) ? (
           <div className="h-full flex min-h-0">
             <div ref={splitContainerRef} className="flex-1 flex min-w-0 relative">
               <div
@@ -452,12 +517,37 @@ export function ChallengePlay({
               </div>
             </div>
           </div>
+        ) : workspaceMode === 'defend' && status.kind === 'ready' ? (
+          <DefendWorkspace
+            challenge={challenge}
+            referenceFile={defendReferenceFile}
+            editorFile={defendEditorFile}
+            codeFileNames={codeFileNames}
+            onReferenceFileSelect={setDefendReferenceFile}
+            onEditorFileSelect={setDefendEditorFile}
+            editedFiles={editedFiles}
+            onFileChange={(name, value) =>
+              setEditedFiles((current) => ({ ...current, [name]: value }))
+            }
+            onResetFile={(name) => {
+              if (!challenge) return;
+              setEditedFiles((current) => ({
+                ...current,
+                [name]: challenge.code_files[name] ?? '',
+              }));
+            }}
+            onSubmitPatch={() => void handleSubmitPatch()}
+            submittingPatch={submittingPatch}
+            patchResult={patchResult}
+            recentSubmissions={recentSubmissions}
+          />
         ) : (
           <OverviewStage
             challenge={challenge}
             history={history}
             payloads={recentPayloads}
             onOpenWorkspace={() => void handleLaunchWorkspace()}
+            onOpenDefendWorkspace={handleOpenDefendWorkspace}
             opening={status.kind === 'starting'}
             error={status.kind === 'error' ? status.message : null}
           />
@@ -562,6 +652,7 @@ interface OverviewStageProps {
   history: SubmissionHistory | null;
   payloads: AttackPayloadRecord[];
   onOpenWorkspace: () => void;
+  onOpenDefendWorkspace: () => void;
   opening: boolean;
   error: string | null;
 }
@@ -571,6 +662,7 @@ function OverviewStage({
   history,
   payloads,
   onOpenWorkspace,
+  onOpenDefendWorkspace,
   opening,
   error,
 }: OverviewStageProps) {
@@ -595,14 +687,24 @@ function OverviewStage({
                   {challenge?.name ?? 'Loading challenge...'}
                 </h2>
               </div>
-              <button
-                type="button"
-                onClick={onOpenWorkspace}
-                disabled={opening || !challenge}
-                className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {opening ? 'Opening…' : 'Open Code + Browser'}
-              </button>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={onOpenWorkspace}
+                  disabled={opening || !challenge}
+                  className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {opening ? 'Opening…' : 'Open Attack Workspace'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenDefendWorkspace}
+                  disabled={!challenge?.has_defend_phase}
+                  className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Open Defend Workspace
+                </button>
+              </div>
             </div>
 
             <div className="px-5 py-5 space-y-6">
@@ -705,7 +807,7 @@ function OverviewStage({
                   {recentSubmissions.length} recent
                 </span>
               </div>
-              <div className="max-h-[280px] overflow-auto divide-y divide-border">
+              <div className="max-h-[280px] overflow-auto divide-y divide-border/80">
                 {recentSubmissions.length > 0 ? (
                   recentSubmissions.map((submission, index) => (
                     <SubmissionRow key={`${submission.created_at}-${index}`} submission={submission} />
@@ -725,7 +827,7 @@ function OverviewStage({
                   {payloads.length} captured
                 </span>
               </div>
-              <div className="max-h-[240px] overflow-auto divide-y divide-border">
+              <div className="max-h-[240px] overflow-auto divide-y divide-border/80">
                 {payloads.length > 0 ? (
                   payloads.map((payload, index) => (
                     <PayloadRow key={`${payload.timestamp}-${index}`} payload={payload} />
@@ -742,6 +844,365 @@ function OverviewStage({
   );
 }
 
+interface DefendWorkspaceProps {
+  challenge: ChallengeDetail | null;
+  referenceFile: string | null;
+  editorFile: string | null;
+  codeFileNames: string[];
+  onReferenceFileSelect: (name: string) => void;
+  onEditorFileSelect: (name: string) => void;
+  editedFiles: Record<string, string>;
+  onFileChange: (name: string, value: string) => void;
+  onResetFile: (name: string) => void;
+  onSubmitPatch: () => void;
+  submittingPatch: boolean;
+  patchResult: PatchResult | null;
+  recentSubmissions: SubmissionRecord[];
+}
+
+function DefendWorkspace({
+  challenge,
+  referenceFile,
+  editorFile,
+  codeFileNames,
+  onReferenceFileSelect,
+  onEditorFileSelect,
+  editedFiles,
+  onFileChange,
+  onResetFile,
+  onSubmitPatch,
+  submittingPatch,
+  patchResult,
+  recentSubmissions,
+}: DefendWorkspaceProps) {
+  const selectedReferenceFile = referenceFile ?? codeFileNames[0] ?? '';
+  const selectedEditorFile = editorFile ?? codeFileNames[0] ?? '';
+  const selectedEditorValue = selectedEditorFile ? editedFiles[selectedEditorFile] ?? '' : '';
+  const selectedReferenceValue =
+    selectedReferenceFile && challenge ? challenge.code_files[selectedReferenceFile] ?? '' : '';
+  const selectedEditorOriginalValue =
+    selectedEditorFile && challenge ? challenge.code_files[selectedEditorFile] ?? '' : '';
+  const changedFileCount = challenge
+    ? Object.keys(challenge.code_files).filter((name) => editedFiles[name] !== challenge.code_files[name]).length
+    : 0;
+  const selectedEditorFileChanged = selectedEditorValue !== selectedEditorOriginalValue;
+  const editorLanguage = languageForFile(selectedEditorFile);
+  const handleEditorMount: OnMount = (editor, monaco) => {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      onSubmitPatch();
+    });
+  };
+
+  return (
+    <div className="h-full min-h-0 overflow-hidden flex bg-background">
+      <div className="w-[38%] min-w-0 min-h-0 overflow-hidden border-r border-border/80 bg-card/40 flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+        <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex-shrink-0">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold mb-2">
+            Reference
+          </p>
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedReferenceFile}
+              onChange={(e) => onReferenceFileSelect(e.target.value)}
+              className="min-w-0 flex-1 rounded border border-border/80 bg-background/85 px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:border-accent"
+            >
+              {codeFileNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-4 bg-background/45">
+          {selectedReferenceFile && challenge ? (
+            <CodeSnippet code={selectedReferenceValue} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No source files loaded.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
+        <div className="px-5 py-4 border-b border-border/80 bg-background/35 flex-shrink-0">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
+            Defend Workspace
+          </p>
+          <h2 className="text-lg text-foreground mt-1">Patch the vulnerability</h2>
+          <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+            Edit the source directly. We will package your changed files into a patch
+            before sending them to the grader.
+          </p>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 min-h-0 overflow-hidden flex flex-col border-r border-border/80 bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div className="px-4 py-2 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1 max-w-sm">
+                <p className="text-xs text-foreground/85 font-semibold uppercase tracking-wider">
+                  Editor
+                </p>
+                <select
+                  value={selectedEditorFile}
+                  onChange={(e) => onEditorFileSelect(e.target.value)}
+                  className="mt-1 w-full rounded border border-border/80 bg-background/85 px-3 py-1.5 font-mono text-xs text-foreground focus:outline-none focus:border-accent"
+                  title="Editor file"
+                >
+                  {codeFileNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  {changedFileCount === 1
+                    ? '1 file changed'
+                    : `${changedFileCount} files changed`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => selectedEditorFile && onResetFile(selectedEditorFile)}
+                  disabled={!selectedEditorFile || !selectedEditorFileChanged}
+                  className="px-3 py-1.5 text-[10px] uppercase tracking-wider border border-red-400/40 text-red-300 rounded hover:border-red-300 hover:bg-red-400/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Reset File
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 p-4">
+              <div className="h-full min-h-[320px] overflow-hidden rounded border border-border/80 bg-background shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+                {selectedEditorFile ? (
+                  <Editor
+                    key={selectedEditorFile}
+                    height="100%"
+                    language={editorLanguage}
+                    path={selectedEditorFile}
+                    theme="vs-dark"
+                    value={selectedEditorValue}
+                    onChange={(value) => onFileChange(selectedEditorFile, value ?? '')}
+                    onMount={handleEditorMount}
+                    options={{
+                      minimap: { enabled: false },
+                      fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
+                      fontSize: 13,
+                      lineHeight: 20,
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      automaticLayout: true,
+                      tabSize: 4,
+                      padding: { top: 12, bottom: 12 },
+                    }}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No file selected
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-4 pb-4 flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Submit when your file changes are ready to grade.
+              </p>
+              <button
+                type="button"
+                onClick={onSubmitPatch}
+                disabled={submittingPatch || changedFileCount === 0}
+                className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {submittingPatch ? 'Grading...' : 'Submit Changes'}
+              </button>
+            </div>
+          </div>
+
+          <aside className="min-w-0 min-h-0 overflow-hidden flex flex-col bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+            <section className="min-h-0 flex-1 overflow-hidden flex flex-col">
+              <div className="px-4 py-2 border-b border-border/80 bg-background/35 text-xs text-foreground/85 font-semibold uppercase tracking-wider flex-shrink-0">
+                Defend Result
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                {submittingPatch ? (
+                  <div className="rounded border border-accent/30 bg-accent/5 px-4 py-5 flex items-center gap-3">
+                    <span className="h-5 w-5 rounded-full border-2 border-accent/30 border-t-accent animate-spin" />
+                    <div>
+                      <p className="text-sm text-foreground">Grading your changes...</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Running functional checks and the exploit replay.
+                      </p>
+                    </div>
+                  </div>
+                ) : patchResult ? (
+                  <div className="space-y-3">
+                    <div
+                      className={`rounded border px-3 py-2 text-xs uppercase tracking-[0.18em] ${
+                        patchResult.status === 'passed'
+                          ? 'text-green-400 border-green-400/30 bg-green-400/5'
+                          : patchResult.status === 'failed' || patchResult.status === 'error'
+                          ? 'text-red-400 border-red-400/30 bg-red-400/5'
+                          : 'text-yellow-400 border-yellow-400/30 bg-yellow-400/5'
+                      }`}
+                    >
+                      {patchResult.status}
+                    </div>
+                    <p className="text-sm text-foreground">
+                      {displayPatchMessage(patchResult)}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <ProgressTile
+                        label="Functional Check"
+                        value={
+                          patchResult.functional_passed == null
+                            ? '—'
+                            : patchResult.functional_passed
+                            ? 'Passed'
+                            : 'Failed'
+                        }
+                      />
+                      <ProgressTile
+                        label="Vulnerability Test"
+                        value={
+                          patchResult.track_test_passed == null
+                            ? '—'
+                            : patchResult.track_test_passed
+                            ? 'Passed'
+                            : 'Failed'
+                        }
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>Elapsed: {patchResult.elapsed_seconds?.toFixed(2) ?? '—'}s</p>
+                      <p>Score awarded: {patchResult.score_awarded ?? 0}</p>
+                    </div>
+                    {patchResult.track_test_passed != null && patchResult.functional_passed !== false ? (
+                      <ExploitAttemptSummary passed={patchResult.track_test_passed} />
+                    ) : null}
+                  </div>
+                ) : (
+                  <EmptyState text="No patch grade yet. Submit changes to see the verdict." />
+                )}
+              </div>
+            </section>
+
+            <section className="min-h-0 flex-[0.9] overflow-hidden flex flex-col border-t border-border/80">
+              <div className="px-4 py-2 border-b border-border/80 bg-background/35 text-xs text-foreground/85 font-semibold uppercase tracking-wider flex-shrink-0">
+                Submission History
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/80">
+                {recentSubmissions.length > 0 ? (
+                  recentSubmissions.map((submission, index) => (
+                    <SubmissionRow key={`${submission.created_at}-${index}`} submission={submission} />
+                  ))
+                ) : (
+                  <EmptyState text="No submission history for this challenge yet." />
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildUnifiedDiff(originalFiles: Record<string, string>, editedFiles: Record<string, string>) {
+  const patches: string[] = [];
+
+  Object.entries(originalFiles).forEach(([fileName, originalContent]) => {
+    const editedContent = editedFiles[fileName] ?? '';
+    if (editedContent === originalContent) return;
+
+    const oldLines = splitForDiff(originalContent);
+    const newLines = splitForDiff(editedContent);
+    const oldCount = Math.max(oldLines.length, 1);
+    const newCount = Math.max(newLines.length, 1);
+    const hunkLines = [
+      ...oldLines.map((line) => `-${line}`),
+      ...newLines.map((line) => `+${line}`),
+    ];
+
+    patches.push(
+      [
+        `diff --git a/${fileName} b/${fileName}`,
+        `--- a/${fileName}`,
+        `+++ b/${fileName}`,
+        `@@ -1,${oldCount} +1,${newCount} @@`,
+        ...hunkLines,
+      ].join('\n'),
+    );
+  });
+
+  return patches.length > 0 ? `${patches.join('\n')}\n` : '';
+}
+
+function splitForDiff(content: string) {
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (normalized === '') return [];
+  if (normalized.endsWith('\n')) return normalized.slice(0, -1).split('\n');
+  return normalized.split('\n');
+}
+
+function ExploitAttemptSummary({ passed }: { passed: boolean }) {
+  return (
+    <section className="rounded border border-border/80 bg-background/88 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+      <div className="px-3 py-2 border-b border-border/80 bg-background/40 text-[10px] uppercase tracking-[0.18em] text-foreground/90 font-semibold">
+        Malicious Exploits Attempted
+      </div>
+      <div className="px-3 py-2 flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground">Known attack replay</span>
+        <span
+          className={`flex-shrink-0 text-[10px] uppercase tracking-[0.16em] rounded border px-2 py-1 ${
+            passed
+              ? 'text-green-400 border-green-400/30 bg-green-400/5'
+              : 'text-red-400 border-red-400/30 bg-red-400/5'
+          }`}
+        >
+          {passed ? 'Passed' : 'Failed'}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function displayPatchMessage(result: PatchResult) {
+  if (result.functional_passed === false) {
+    return 'Functional check failed. The app behavior changed; review your patch and try again.';
+  }
+  if (result.track_test_passed === false) {
+    return 'Vulnerability still present. The known attack is still working.';
+  }
+  return result.message ?? 'No grading message returned.';
+}
+
+function languageForFile(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  switch (extension) {
+    case 'py':
+      return 'python';
+    case 'js':
+    case 'jsx':
+      return 'javascript';
+    case 'ts':
+    case 'tsx':
+      return 'typescript';
+    case 'json':
+      return 'json';
+    case 'md':
+      return 'markdown';
+    case 'html':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'sql':
+      return 'sql';
+    case 'sh':
+      return 'shell';
+    default:
+      return 'plaintext';
+  }
+}
+
 function InfoChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
@@ -752,17 +1213,28 @@ function InfoChip({ label, value }: { label: string; value: string }) {
 }
 
 function ProgressTile({ label, value }: { label: string; value: string }) {
+  const valueTone =
+    value === 'Passed'
+      ? 'text-green-400'
+      : value === 'Failed'
+      ? 'text-red-400'
+      : 'text-foreground';
+
   return (
     <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
       <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold mb-1">{label}</p>
-      <p className="text-sm text-foreground">{value}</p>
+      <p className={`text-sm ${valueTone}`}>{value}</p>
     </div>
   );
 }
 
 function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
+  const message = submission.result
+    ? displaySubmissionMessage(submission.result)
+    : `Submitted ${submission.submission_type}.`;
+
   return (
-    <div className="px-4 py-3 bg-background/55">
+    <div className="px-4 py-3 bg-background/65">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
           {submission.phase}
@@ -780,7 +1252,7 @@ function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
         </span>
       </div>
       <p className="text-sm text-foreground mt-2">
-        {submission.result?.message || `Submitted ${submission.submission_type}.`}
+        {message}
       </p>
       <p className="text-xs text-muted-foreground mt-2">
         {new Date(submission.created_at).toLocaleString()}
@@ -788,6 +1260,17 @@ function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
       </p>
     </div>
   );
+}
+
+function displaySubmissionMessage(result: SubmissionRecord['result']) {
+  if (!result) return 'Submission recorded.';
+  if (result.functional_passed === false) {
+    return 'Functional check failed. The app behavior changed; review your patch and try again.';
+  }
+  if (result.track_test_passed === false) {
+    return 'Vulnerability still present. The known attack is still working.';
+  }
+  return result.message || 'Submission recorded.';
 }
 
 function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
@@ -800,7 +1283,7 @@ function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
       : 'text-green-400 border-green-400/30 bg-green-400/5';
 
   return (
-    <div className="px-4 py-3 bg-background/55">
+    <div className="px-4 py-3 bg-background/65">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
           {payload.method} /{payload.path}
