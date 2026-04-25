@@ -6,14 +6,16 @@ import { CodeSnippet } from './components/CodeSnippet';
 import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
-import { api, type CurrentUser } from './lib/api';
+import { Player } from './components/Player';
+import { api, type ChallengeSummary, type CurrentUser } from './lib/api';
 
-type View = 'home' | 'auth' | 'dashboard' | 'profile';
+type View = 'home' | 'auth' | 'dashboard' | 'profile' | 'player';
 
 export default function App() {
   const [view, setView] = useState<View>('home');
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [bootChecked, setBootChecked] = useState(false);
+  const [activeChallenge, setActiveChallenge] = useState<ChallengeSummary | null>(null);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -61,6 +63,25 @@ export default function App() {
       <Dashboard
         user={user}
         onProfileClick={() => setView('profile')}
+        onSelectChallenge={(c) => {
+          setActiveChallenge(c);
+          setView('player');
+        }}
+      />
+    );
+  }
+
+  if (view === 'player' && user && activeChallenge) {
+    return (
+      <Player
+        challenge={activeChallenge}
+        onBack={() => {
+          setActiveChallenge(null);
+          setView('dashboard');
+        }}
+        onSolved={() => {
+          refreshUser();
+        }}
       />
     );
   }
@@ -74,11 +95,6 @@ export default function App() {
           setUser(null);
           setView('home');
         }}
-  if (showAuth) {
-    return (
-      <Auth
-        onBackToHome={() => setShowAuth(false)}
-        onAuthenticated={() => setShowAuth(false)}
       />
     );
   }

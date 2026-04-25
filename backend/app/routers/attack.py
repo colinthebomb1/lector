@@ -8,6 +8,8 @@ Flow:
 4. POST /api/attack/{challenge_id}/stop   → tear down the container
 """
 
+import re
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -244,17 +246,51 @@ async def proxy_to_container(
         if k.lower() not in excluded_headers
     }
 
+    proxy_prefix = f"/api/attack/{challenge_id}/proxy"
+
     if resp.status_code in (301, 302, 303, 307, 308):
         location = resp.headers.get("location", "")
         if location.startswith("/"):
-            location = f"/api/attack/{challenge_id}/proxy{location}"
+            location = f"{proxy_prefix}{location}"
         response_headers["location"] = location
 
+    content = resp.content
+    content_type = resp.headers.get("content-type", "")
+    if "text/html" in content_type.lower():
+        content = _rewrite_html_paths(content, proxy_prefix)
+
     return Response(
-        content=resp.content,
+        content=content,
         status_code=resp.status_code,
         headers=response_headers,
     )
+
+
+_HTML_PATH_ATTR_RE = re.compile(
+    rb"""(?P<attr>\b(?:href|src|action|formaction)\s*=\s*)(?P<quote>["'])(?P<path>/(?!/)[^"']*)(?P=quote)""",
+    re.IGNORECASE,
+)
+
+
+def _rewrite_html_paths(body: bytes, proxy_prefix: str) -> bytes:
+    """Rewrite absolute-path URLs in HTML so they go through the proxy.
+
+    Browsers resolve `/login` against the iframe origin, not the proxy path,
+    so without this rewrite a form submit inside the iframe escapes the
+    sandbox. Only paths starting with a single `/` are rewritten — anything
+    starting with `//`, `http://`, `https://`, `#`, `?`, etc. is left alone.
+    """
+    prefix = proxy_prefix.encode()
+
+    def _sub(match: "re.Match[bytes]") -> bytes:
+        attr = match.group("attr")
+        quote = match.group("quote")
+        path = match.group("path")
+        if path.startswith(prefix):
+            return match.group(0)
+        return attr + quote + prefix + path + quote
+
+    return _HTML_PATH_ATTR_RE.sub(_sub, body)
 
 
 @router.api_route("/{challenge_id}/proxy", methods=["GET", "POST"])
