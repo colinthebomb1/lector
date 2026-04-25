@@ -9,23 +9,54 @@ from app import main
 from app.models import Challenge, ChallengeMetadata, Difficulty, Track
 from app.routers import auth, submissions
 
+def _patch_for_replace(
+    original: str, vulnerable_block: str, fixed_block: str
+) -> str | None:
+    updated = original.replace(vulnerable_block, fixed_block, 1)
+    return None if updated == original else updated
+
+
 def make_patch_fix(base_path: Path) -> str:
     code_dir = base_path / "code"
-    vulnerable_block = (
+    # Legacy db.py shape (pre try/finally around the vulnerable query)
+    legacy_vulnerable = (
         "    query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n"
         "    user = conn.execute(query).fetchone()\n"
     )
-    fixed_block = (
+    legacy_fixed = (
         "    query = \"SELECT * FROM users WHERE username=? AND password=?\"\n"
         "    user = conn.execute(query, (username, password)).fetchone()\n"
     )
+    # Current db.py: try/finally + return inside try
+    current_vulnerable = (
+        "    try:\n"
+        "        query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n"
+        "        return conn.execute(query).fetchone()\n"
+        "    finally:\n"
+        "        conn.close()\n"
+    )
+    current_fixed = (
+        "    try:\n"
+        "        query = \"SELECT * FROM users WHERE username=? AND password=?\"\n"
+        "        return conn.execute(query, (username, password)).fetchone()\n"
+        "    finally:\n"
+        "        conn.close()\n"
+    )
+    replacements: list[tuple[str, str]] = [
+        (current_vulnerable, current_fixed),
+        (legacy_vulnerable, legacy_fixed),
+    ]
     for relative_path in ("app.py", "db.py"):
         target_path = code_dir / relative_path
         if not target_path.exists():
             continue
         original = target_path.read_text(encoding="utf-8")
-        updated = original.replace(vulnerable_block, fixed_block, 1)
-        if updated == original:
+        updated: str | None = None
+        for vuln, fix in replacements:
+            updated = _patch_for_replace(original, vuln, fix)
+            if updated is not None:
+                break
+        if updated is None:
             continue
 
         old_lines = original.splitlines()
