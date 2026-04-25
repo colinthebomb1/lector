@@ -136,22 +136,32 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     return Array.from(byId.values());
   }, [challenges]);
 
-  const filtered = useMemo(() => {
-    let scoped = challengesWithPreviews;
-    if (trackFilter !== ALL_TRACK) {
-      scoped = scoped.filter((c) => c.track === trackFilter);
-    }
-    if (trackFilter !== 'code-review' && category !== ALL) {
-      scoped = scoped.filter((c) => c.category === category);
-    }
-    return [...scoped].sort((a, b) => {
+  const sortChallenges = (list: ChallengeSummary[]) =>
+    [...list].sort((a, b) => {
       const difficultyDelta = DIFFICULTY_ORDER[a.difficulty] - DIFFICULTY_ORDER[b.difficulty];
       if (difficultyDelta !== 0) return difficultyDelta;
       const minutesDelta = a.estimated_minutes - b.estimated_minutes;
       if (minutesDelta !== 0) return minutesDelta;
       return a.name.localeCompare(b.name);
     });
+
+  const securityChallenges = useMemo(() => {
+    if (trackFilter === 'code-review') return [];
+    let scoped = challengesWithPreviews.filter((c) => c.track === 'security');
+    if (category !== ALL) {
+      scoped = scoped.filter((c) => c.category === category);
+    }
+    return sortChallenges(scoped);
   }, [challengesWithPreviews, category, trackFilter]);
+
+  const codeReviewChallenges = useMemo(() => {
+    if (trackFilter === 'security') return [];
+    return sortChallenges(
+      challengesWithPreviews.filter((c) => c.track === 'code-review'),
+    );
+  }, [challengesWithPreviews, trackFilter]);
+
+  const totalVisible = securityChallenges.length + codeReviewChallenges.length;
 
   const completed = new Set(user.challenges_completed ?? []);
   const streak = user.streak ?? 0;
@@ -234,7 +244,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl mb-2">Welcome back, {displayName}.</h1>
           <p className="text-sm text-muted-foreground">
-            {filtered.length} challenge{filtered.length === 1 ? '' : 's'}
+            {totalVisible} challenge{totalVisible === 1 ? '' : 's'}
             {trackFilter !== ALL_TRACK
               ? ` · ${TRACK_OPTIONS.find((t) => t.value === trackFilter)?.label ?? trackFilter} track`
               : ''}
@@ -252,71 +262,170 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           </p>
         )}
 
-        {!loading && !error && filtered.length === 0 && (
+        {!loading && !error && totalVisible === 0 && (
           <div className="border border-dashed border-border rounded p-10 text-center text-sm text-muted-foreground">
             No challenges match the current filters.
           </div>
         )}
 
-        <div className="space-y-2">
-          {filtered.map((c) => {
-            const row = c as DashboardChallenge;
-            const isPreview = Boolean(row.isPreview);
-            const done = !isPreview && (completed.has(c.id) || completed.has(`${c.id}:attack`));
-            return (
-              <div
-                key={c.id}
-                className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors"
-              >
-                <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
-                  <span className="text-foreground truncate">{c.name}</span>
-                  {isPreview && (
-                    <span className="text-[10px] uppercase tracking-wider text-cyan-300/90 border border-cyan-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
-                      preview
-                    </span>
-                  )}
-                  {done && (
-                    <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
-                      done
-                    </span>
-                  )}
-                </span>
-                <span className="col-span-5 md:col-span-2 text-xs text-muted-foreground">
-                  {c.category}
-                </span>
-                <span className="col-span-3 md:col-span-1 justify-self-center">
-                  <span
-                    className={`text-[10px] uppercase tracking-wider border rounded px-2 py-1 ${DIFFICULTY_TONE[c.difficulty]}`}
-                  >
-                    {c.difficulty}
-                  </span>
-                </span>
-                <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
-                  ~{c.estimated_minutes} min
-                </span>
-                <div className="col-span-4 md:col-span-2 justify-self-end">
-                  {isPreview ? (
-                    <span
-                      className="inline-block px-4 py-2 text-xs uppercase tracking-wider rounded border border-border text-muted-foreground cursor-not-allowed"
-                      title="Not wired to the grader yet"
-                    >
-                      Coming soon
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onSelectChallenge?.(c)}
-                      className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors cursor-pointer"
-                    >
-                      {done ? 'Replay →' : 'Start →'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {!loading && !error && totalVisible > 0 && (
+          <div className="flex flex-col gap-6">
+            {trackFilter !== 'code-review' && (
+              <ChallengeSection
+                title="Security"
+                count={securityChallenges.length}
+                challenges={securityChallenges}
+                completed={completed}
+                onSelectChallenge={onSelectChallenge}
+                emptyText="No security challenges match the current filters."
+              />
+            )}
+            {trackFilter !== 'security' && (
+              <ChallengeSection
+                title="Code Review"
+                count={codeReviewChallenges.length}
+                challenges={codeReviewChallenges}
+                completed={completed}
+                onSelectChallenge={onSelectChallenge}
+                emptyText="No code review challenges yet."
+              />
+            )}
+          </div>
+        )}
       </main>
+    </div>
+  );
+}
+
+interface ChallengeSectionProps {
+  title: string;
+  count: number;
+  challenges: ChallengeSummary[];
+  completed: Set<string>;
+  onSelectChallenge?: (challenge: ChallengeSummary) => void;
+  emptyText: string;
+}
+
+function ChallengeSection({
+  title,
+  count,
+  challenges,
+  completed,
+  onSelectChallenge,
+  emptyText,
+}: ChallengeSectionProps) {
+  const [open, setOpen] = useState(true);
+  const sectionId = `challenge-section-${title.replace(/\s+/g, '-').toLowerCase()}`;
+
+  return (
+    <section
+      className={`border border-border rounded-lg bg-card/40 flex flex-col min-h-0 ${open ? 'max-h-[55vh]' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={sectionId}
+        className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-background/40 hover:bg-foreground/5 transition-colors text-left cursor-pointer rounded-t-lg"
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className={`text-muted-foreground text-xs transition-transform ${open ? 'rotate-90' : ''}`}
+            aria-hidden="true"
+          >
+            ▶
+          </span>
+          <h2 className="text-sm uppercase tracking-[0.2em] text-foreground/85 font-semibold">
+            {title}
+          </h2>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {count} {count === 1 ? 'challenge' : 'challenges'}
+        </span>
+      </button>
+      {open && (
+        <div
+          id={sectionId}
+          className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2"
+        >
+          {challenges.length === 0 ? (
+            <p className="text-sm text-muted-foreground px-2 py-6 text-center">
+              {emptyText}
+            </p>
+          ) : (
+            challenges.map((c) => (
+              <ChallengeRow
+                key={c.id}
+                challenge={c}
+                completed={completed}
+                onSelectChallenge={onSelectChallenge}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface ChallengeRowProps {
+  challenge: ChallengeSummary;
+  completed: Set<string>;
+  onSelectChallenge?: (challenge: ChallengeSummary) => void;
+}
+
+function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowProps) {
+  const row = challenge as DashboardChallenge;
+  const isPreview = Boolean(row.isPreview);
+  const done =
+    !isPreview && (completed.has(challenge.id) || completed.has(`${challenge.id}:attack`));
+
+  return (
+    <div className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors">
+      <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
+        <span className="text-foreground truncate">{challenge.name}</span>
+        {isPreview && (
+          <span className="text-[10px] uppercase tracking-wider text-cyan-300/90 border border-cyan-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
+            preview
+          </span>
+        )}
+        {done && (
+          <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
+            done
+          </span>
+        )}
+      </span>
+      <span className="col-span-5 md:col-span-2 text-xs text-muted-foreground">
+        {challenge.category}
+      </span>
+      <span className="col-span-3 md:col-span-1 justify-self-center">
+        <span
+          className={`text-[10px] uppercase tracking-wider border rounded px-2 py-1 ${DIFFICULTY_TONE[challenge.difficulty]}`}
+        >
+          {challenge.difficulty}
+        </span>
+      </span>
+      <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
+        ~{challenge.estimated_minutes} min
+      </span>
+      <div className="col-span-4 md:col-span-2 justify-self-end">
+        {isPreview ? (
+          <span
+            className="inline-block px-4 py-2 text-xs uppercase tracking-wider rounded border border-border text-muted-foreground cursor-not-allowed"
+            title="Not wired to the grader yet"
+          >
+            Coming soon
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectChallenge?.(challenge)}
+            className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors cursor-pointer"
+          >
+            {done ? 'Replay →' : 'Start →'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
