@@ -11,6 +11,31 @@ _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
 
 
+async def _ensure_user_indexes(db: AsyncIOMotorDatabase) -> None:
+    await db.users.create_index("session_id", unique=True)
+    await db.users.create_index(
+        "email",
+        unique=True,
+        partialFilterExpression={"email": {"$type": "string"}},
+    )
+
+    try:
+        await db.users.create_index(
+            "google_sub",
+            unique=True,
+            partialFilterExpression={"google_sub": {"$type": "string"}},
+        )
+    except OperationFailure as exc:
+        if exc.code != 86:
+            raise
+        await db.users.drop_index("google_sub_1")
+        await db.users.create_index(
+            "google_sub",
+            unique=True,
+            partialFilterExpression={"google_sub": {"$type": "string"}},
+        )
+
+
 async def connect_db() -> None:
     global _client, _db
     settings = get_settings()
@@ -23,12 +48,7 @@ async def connect_db() -> None:
     try:
         await asyncio.wait_for(_client.admin.command("ping"), timeout=3)
         logger.info("MongoDB connected at %s", settings.mongo_url)
-        await _db.users.create_index("session_id", unique=True)
-        await _db.users.create_index(
-            "email",
-            unique=True,
-            partialFilterExpression={"email": {"$type": "string"}},
-        )
+        await _ensure_user_indexes(_db)
         try:
             await _db.submissions.drop_index("user_id_1_challenge_id_1")
         except OperationFailure:
