@@ -10,6 +10,7 @@ import {
 } from './ui/resizable';
 import {
   getCodeReviewChallenge,
+  getCodeReviewVariant,
   type SolutionVerdict,
 } from '../data/codeReviewChallenges';
 
@@ -33,7 +34,27 @@ export function CodeReviewPlay({
     [challenge.id],
   );
 
-  const [code, setCode] = useState<string>(reviewChallenge?.default_code ?? '');
+  const [activeLanguage, setActiveLanguage] = useState<string>(
+    () => getCodeReviewVariant(challenge.id)?.language ?? '',
+  );
+
+  // When the user navigates to a different challenge, keep their language
+  // preference if the new challenge offers it; otherwise fall back to that
+  // challenge's declared default.
+  useEffect(() => {
+    setActiveLanguage((prev) => {
+      const stillOffered = getCodeReviewVariant(challenge.id, prev);
+      if (stillOffered && stillOffered.language === prev) return prev;
+      return getCodeReviewVariant(challenge.id)?.language ?? '';
+    });
+  }, [challenge.id]);
+
+  const variant = useMemo(
+    () => getCodeReviewVariant(challenge.id, activeLanguage) ?? null,
+    [challenge.id, activeLanguage],
+  );
+
+  const [code, setCode] = useState<string>(variant?.default_code ?? '');
   const [verdict, setVerdict] = useState<SolutionVerdict | null>(null);
   const [grading, setGrading] = useState(false);
   const [hintIndex, setHintIndex] = useState(0);
@@ -44,9 +65,11 @@ export function CodeReviewPlay({
   const [aiHintHistory, setAiHintHistory] = useState<string[]>([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // If the user clicks between two code-review challenges in one session, reset.
+  // Reset editor + grading state whenever the active variant changes —
+  // either because the user picked a different challenge or a different
+  // language for the same challenge.
   useEffect(() => {
-    setCode(reviewChallenge?.default_code ?? '');
+    setCode(variant?.default_code ?? '');
     setVerdict(null);
     setGrading(false);
     setHintIndex(0);
@@ -56,7 +79,7 @@ export function CodeReviewPlay({
     setLoadingAiHint(false);
     setAiHintHistory([]);
     setShowSuccessModal(false);
-  }, [reviewChallenge]);
+  }, [variant]);
 
   useEffect(() => {
     if (!verdict?.passed) return;
@@ -95,45 +118,45 @@ export function CodeReviewPlay({
   };
 
   const handleReset = useCallback(() => {
-    if (!reviewChallenge) return;
-    setCode(reviewChallenge.default_code);
+    if (!variant) return;
+    setCode(variant.default_code);
     setVerdict(null);
-  }, [reviewChallenge]);
+  }, [variant]);
 
   const handleHint = useCallback(() => {
-    if (!reviewChallenge) return;
-    if (hintIndex >= reviewChallenge.hints.length) return;
-    const next = reviewChallenge.hints[hintIndex];
+    if (!variant) return;
+    if (hintIndex >= variant.hints.length) return;
+    const next = variant.hints[hintIndex];
     setRevealedHints((prev) => [...prev, next]);
     setHintIndex((idx) => idx + 1);
-  }, [hintIndex, reviewChallenge]);
+  }, [hintIndex, variant]);
 
   const handleSubmit = useCallback(() => {
-    if (!reviewChallenge) return;
+    if (!variant) return;
     setGrading(true);
     setVerdict(null);
     // Async pause so the spinner is visible — keeps grading semantics consistent
     // with the security/defend grader UX even though this check is local.
     setTimeout(() => {
-      const result = reviewChallenge.solutionCheck(code);
+      const result = variant.solutionCheck(code);
       setVerdict(result);
       setGrading(false);
     }, 250);
-  }, [code, reviewChallenge]);
+  }, [code, variant]);
 
   const handleAiHint = useCallback(async () => {
-    if (!reviewChallenge) return;
+    if (!reviewChallenge || !variant) return;
     setLoadingAiHint(true);
     try {
       const result = await api.codeReviewHint({
         challenge_id: reviewChallenge.summary.id,
         challenge_name: reviewChallenge.summary.name,
-        challenge_prompt: reviewChallenge.prompt,
-        language: reviewChallenge.language,
-        starter_code: reviewChallenge.default_code,
+        challenge_prompt: variant.prompt,
+        language: variant.language,
+        starter_code: variant.default_code,
         current_code: code,
-        rubric_items: reviewChallenge.aiHintRubric,
-        static_hints: reviewChallenge.hints,
+        rubric_items: variant.aiHintRubric,
+        static_hints: variant.hints,
         prior_hints: aiHintHistory,
       });
       const nextHint = result.hint || result.analysis || 'No hint available right now.';
@@ -146,12 +169,26 @@ export function CodeReviewPlay({
     } finally {
       setLoadingAiHint(false);
     }
-  }, [aiHintHistory, code, reviewChallenge]);
+  }, [aiHintHistory, code, reviewChallenge, variant]);
 
-  const dirty = reviewChallenge ? code !== reviewChallenge.default_code : false;
-  const hintsRemaining = reviewChallenge
-    ? Math.max(reviewChallenge.hints.length - hintIndex, 0)
+  const dirty = variant ? code !== variant.default_code : false;
+  const hintsRemaining = variant
+    ? Math.max(variant.hints.length - hintIndex, 0)
     : 0;
+
+  const handleLanguageSwitch = useCallback(
+    (lang: string) => {
+      if (lang === activeLanguage) return;
+      if (dirty && !verdict?.passed) {
+        const ok = window.confirm(
+          'Switching languages will discard your current edits. Continue?',
+        );
+        if (!ok) return;
+      }
+      setActiveLanguage(lang);
+    },
+    [activeLanguage, dirty, verdict?.passed],
+  );
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -187,7 +224,7 @@ export function CodeReviewPlay({
       </header>
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        {!reviewChallenge ? (
+        {!reviewChallenge || !variant ? (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
             This code-review challenge is not available yet.
           </div>
@@ -202,14 +239,14 @@ export function CodeReviewPlay({
                   Review the code on the left
                 </h2>
                 <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-                  {reviewChallenge.prompt}
+                  {variant.prompt}
                 </p>
               </div>
 
               <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0">
                 <ResizablePanel defaultSize={70} minSize={35}>
                   <div className="h-full min-h-0 overflow-auto p-4 bg-background/45">
-                    <CodeSnippet code={reviewChallenge.original_code} />
+                    <CodeSnippet code={variant.original_code} />
                   </div>
                 </ResizablePanel>
 
@@ -219,8 +256,8 @@ export function CodeReviewPlay({
                 />
 
                 <ResizablePanel defaultSize={30} minSize={18} maxSize={55}>
-                  <div className="h-full min-h-0 overflow-hidden bg-background/35">
-                    <div className="border-b border-border/80 px-4 py-2">
+                  <div className="h-full min-h-0 overflow-hidden bg-background/35 flex flex-col">
+                    <div className="border-b border-border/80 px-4 py-2 flex-shrink-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -234,7 +271,7 @@ export function CodeReviewPlay({
                           }
                         >
                           {hintsRemaining > 0
-                            ? `Hint (${hintIndex + 1}/${reviewChallenge.hints.length})`
+                            ? `Hint (${hintIndex + 1}/${variant.hints.length})`
                             : 'No more hints'}
                         </button>
                         <button
@@ -268,7 +305,7 @@ export function CodeReviewPlay({
                       </div>
                     </div>
 
-                    <div className="h-full min-h-0 overflow-y-auto px-4 py-3 space-y-3">
+                    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
                       {verdict && !verdict.passed && (
                         <div
                           className={`rounded border px-3 py-2 text-sm ${
@@ -322,33 +359,60 @@ export function CodeReviewPlay({
             </section>
 
             <section className="min-w-0 min-h-0 overflow-hidden flex flex-col bg-background">
-              <div className="px-5 py-3 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3 flex-shrink-0">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
-                    Your Patch
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Edit freely — submission runs locally against the rubric.
-                  </p>
+              <div className="px-5 py-3 border-b border-border/80 bg-background/35 flex-shrink-0">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
+                  Your Patch
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Edit freely — submission runs locally against the rubric.
+                </p>
+                <div className="flex items-center gap-4 flex-wrap mt-2">
+                  {reviewChallenge.variants.length > 1 && (
+                    <div
+                      role="tablist"
+                      aria-label="Language"
+                      className="flex items-center gap-0.5 border border-border/70 rounded p-0.5 bg-background/60"
+                    >
+                      {reviewChallenge.variants.map((v) => {
+                        const isActive = v.language === activeLanguage;
+                        return (
+                          <button
+                            key={v.language}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            onClick={() => handleLanguageSwitch(v.language)}
+                            className={`px-2 py-1 text-[11px] uppercase tracking-wider rounded transition-colors ${
+                              isActive
+                                ? 'bg-accent text-accent-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            {v.display_language}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <span
+                    className={`ml-auto text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${
+                      verdict?.passed
+                        ? 'text-green-300 border-green-300/40 bg-green-300/5'
+                        : dirty
+                        ? 'text-amber-300 border-amber-300/40 bg-amber-300/5'
+                        : 'text-muted-foreground border-border/70 bg-background/40'
+                    }`}
+                  >
+                    {verdict?.passed ? 'Passed' : dirty ? 'In Progress' : 'Not Started'}
+                  </span>
                 </div>
-                <span
-                  className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${
-                    verdict?.passed
-                      ? 'text-green-300 border-green-300/40 bg-green-300/5'
-                      : dirty
-                      ? 'text-amber-300 border-amber-300/40 bg-amber-300/5'
-                      : 'text-muted-foreground border-border/70 bg-background/40'
-                  }`}
-                >
-                  {verdict?.passed ? 'Passed' : dirty ? 'In Progress' : 'Not Started'}
-                </span>
               </div>
               <div className="flex-1 min-h-0 p-4">
                 <div className="h-full min-h-[320px] overflow-hidden rounded border border-border/80 bg-background shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
                   <Editor
-                    key={reviewChallenge.summary.id}
+                    key={`${reviewChallenge.summary.id}:${variant.language}`}
                     height="100%"
-                    language={reviewChallenge.language}
+                    language={variant.language}
                     theme="vs-dark"
                     value={code}
                     onChange={(value) => setCode(value ?? '')}
