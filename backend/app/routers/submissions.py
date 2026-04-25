@@ -79,13 +79,21 @@ async def submit_patch(body: PatchSubmission, user: dict = Depends(require_sessi
     await db.submissions.insert_one(submission.model_dump())
 
     if result.status == GradeStatus.PASSED:
-        await db.users.update_one(
-            {"session_id": user["session_id"]},
+        update = await db.users.update_one(
+            {
+                "session_id": user["session_id"],
+                "challenges_completed": {"$ne": body.challenge_id},
+            },
             {
                 "$addToSet": {"challenges_completed": body.challenge_id},
                 "$inc": {"total_score": 100},
             },
         )
+        if update.matched_count == 0:
+            await db.users.update_one(
+                {"session_id": user["session_id"]},
+                {"$addToSet": {"challenges_completed": body.challenge_id}},
+            )
 
     return result.model_dump()
 

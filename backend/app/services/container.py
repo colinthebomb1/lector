@@ -5,6 +5,7 @@ Handles: build, spawn, patch application, test execution, cleanup.
 """
 
 import asyncio
+import logging
 import tempfile
 from pathlib import Path
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ import docker
 from docker.models.containers import Container
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,11 +30,33 @@ class ContainerManager:
     def __init__(self) -> None:
         settings = get_settings()
         self._client = docker.from_env(timeout=settings.container_timeout)
+        self._built_images: set[str] = set()
 
-    def build_challenge_image(self, challenge_id: str, dockerfile_dir: str) -> str:
+    def build_challenge_image(self, challenge_id: str, challenge_dir: str) -> str:
         """Build (or cache) the Docker image for a challenge. Returns image tag."""
         tag = f"lector-challenge-{challenge_id}:latest"
-        self._client.images.build(path=dockerfile_dir, tag=tag, rm=True)
+        self._client.images.build(path=challenge_dir, tag=tag, rm=True)
+        self._built_images.add(tag)
+        return tag
+
+    async def ensure_challenge_image(self, challenge_id: str, challenge_dir: str) -> str:
+        """Ensure the image exists before a grading run."""
+        tag = f"lector-challenge-{challenge_id}:latest"
+        if tag in self._built_images:
+            return tag
+
+        loop = asyncio.get_event_loop()
+
+        try:
+            await loop.run_in_executor(None, lambda: self._client.images.get(tag))
+        except docker.errors.ImageNotFound:
+            logger.info("Building challenge image %s", tag)
+            await loop.run_in_executor(
+                None, lambda: self.build_challenge_image(challenge_id, challenge_dir)
+            )
+        else:
+            self._built_images.add(tag)
+
         return tag
 
     async def spawn_container(self, image_tag: str) -> Container:

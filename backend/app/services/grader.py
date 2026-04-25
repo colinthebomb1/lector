@@ -26,7 +26,9 @@ async def grade_submission(challenge: Challenge, patch: str) -> GradeResult:
     track = challenge.metadata.track
     start = time.monotonic()
 
-    image_tag = f"lector-challenge-{challenge.metadata.id}:latest"
+    image_tag = await cm.ensure_challenge_image(
+        challenge.metadata.id, challenge.base_path
+    )
     container = await cm.spawn_container(image_tag)
 
     try:

@@ -6,6 +6,7 @@ All responses are cached by prompt hash in MongoDB to save API cost and handle f
 
 import hashlib
 import json
+from datetime import datetime, timezone
 
 import httpx
 
@@ -86,7 +87,6 @@ async def generate_post_solve_writeup(
 async def _gemma_request(prompt: str) -> dict:
     """Send a request to Gemma, with MongoDB caching by prompt hash."""
     cache_key = hashlib.sha256(prompt.encode()).hexdigest()
-
     db = get_db()
     cached = await db.gemma_cache.find_one({"_id": cache_key})
     if cached:
@@ -94,7 +94,19 @@ async def _gemma_request(prompt: str) -> dict:
 
     settings = get_settings()
     if not settings.gemma_api_key:
-        return {"text": "[Gemma API key not configured]", "passed": True, "missing_points": []}
+        result = _local_fallback_response(prompt)
+        await db.gemma_cache.update_one(
+            {"_id": cache_key},
+            {
+                "$set": {
+                    "response": result,
+                    "prompt": prompt[:500],
+                    "created_at": datetime.now(timezone.utc),
+                }
+            },
+            upsert=True,
+        )
+        return result
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
@@ -113,7 +125,56 @@ async def _gemma_request(prompt: str) -> dict:
 
     await db.gemma_cache.update_one(
         {"_id": cache_key},
-        {"$set": {"response": result, "prompt": prompt[:500]}},
+        {
+            "$set": {
+                "response": result,
+                "prompt": prompt[:500],
+                "created_at": datetime.now(timezone.utc),
+            }
+        },
         upsert=True,
     )
     return result
+
+
+def _local_fallback_response(prompt: str) -> dict:
+    """Deterministic local fallback that preserves the product gates."""
+    if "Reference summary:" in prompt and "Student summary:" in prompt:
+        reference = _extract_section(prompt, "Reference summary:\n", "\n\nStudent summary:")
+        student = _extract_section(
+            prompt, "Student summary:\n", "\n\nDoes the student identify:"
+        )
+        reference_terms = {word for word in _tokenize(reference) if len(word) > 4}
+        student_terms = set(_tokenize(student))
+        overlap = sorted(reference_terms & student_terms)
+
+        if len(overlap) >= min(3, len(reference_terms) or 3):
+            return {
+                "passed": True,
+                "feedback": "Local fallback accepted the summary based on keyword overlap.",
+                "missing_points": [],
+            }
+
+        return {
+            "passed": False,
+            "feedback": "Gemma API key not configured. Local fallback requires more overlap with the reference summary.",
+            "missing_points": sorted(reference_terms - student_terms)[:3],
+        }
+
+    return {"text": "[Gemma API key not configured - using local fallback]"}
+
+
+def _extract_section(text: str, start_marker: str, end_marker: str) -> str:
+    start = text.find(start_marker)
+    if start == -1:
+        return ""
+    start += len(start_marker)
+    end = text.find(end_marker, start)
+    if end == -1:
+        end = len(text)
+    return text[start:end].strip()
+
+
+def _tokenize(text: str) -> list[str]:
+    cleaned = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
+    return [word for word in cleaned.split() if word]
