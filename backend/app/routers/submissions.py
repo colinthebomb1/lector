@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.database import get_db
+from app.database import get_db, is_db_connected
 from app.models import (
     PatchSubmission,
     SummarySubmission,
@@ -37,8 +37,9 @@ async def submit_summary(body: SummarySubmission, user: dict = Depends(require_s
             message=result.get("feedback", ""),
         ),
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
     return {
         "passed": result.get("passed", False),
@@ -64,25 +65,26 @@ async def submit_patch(body: PatchSubmission, user: dict = Depends(require_sessi
         payload=body.model_dump(),
         result=result,
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
-    if result.status == GradeStatus.PASSED:
-        update = await db.users.update_one(
-            {
-                "session_id": user["session_id"],
-                "challenges_completed": {"$ne": body.challenge_id},
-            },
-            {
-                "$addToSet": {"challenges_completed": body.challenge_id},
-                "$inc": {"total_score": 100},
-            },
-        )
-        if update.matched_count == 0:
-            await db.users.update_one(
-                {"session_id": user["session_id"]},
-                {"$addToSet": {"challenges_completed": body.challenge_id}},
+        if result.status == GradeStatus.PASSED:
+            update = await db.users.update_one(
+                {
+                    "session_id": user["session_id"],
+                    "challenges_completed": {"$ne": body.challenge_id},
+                },
+                {
+                    "$addToSet": {"challenges_completed": body.challenge_id},
+                    "$inc": {"total_score": 100},
+                },
             )
+            if update.matched_count == 0:
+                await db.users.update_one(
+                    {"session_id": user["session_id"]},
+                    {"$addToSet": {"challenges_completed": body.challenge_id}},
+                )
 
     return result.model_dump()
 
@@ -110,8 +112,9 @@ async def submit_annotations(
         payload=body.model_dump(),
         result=grade_result,
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
     return results
 
@@ -121,6 +124,9 @@ async def get_submission_history(
     challenge_id: str, user: dict = Depends(require_session)
 ):
     """Get all submissions for a challenge by the current user."""
+    if not is_db_connected():
+        return []
+
     db = get_db()
     cursor = db.submissions.find(
         {"user_id": user["session_id"], "challenge_id": challenge_id}

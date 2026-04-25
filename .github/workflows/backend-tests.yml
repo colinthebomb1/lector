@@ -24,6 +24,7 @@ jobs:
             challenge_e2e:
               - 'backend/challenges/**'
               - 'backend/tests/test_attack_e2e.py'
+              - 'backend/tests/test_defender_e2e.py'
               - '.github/workflows/backend-tests.yml'
 
   test:
@@ -72,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run SQLi challenge E2E test
+      - name: Run SQLi challenge E2E tests
         env:
           PYTHONPATH: .
-        run: pytest -q -m e2e tests/test_attack_e2e.py
+        run: pytest -q -m e2e tests/test_attack_e2e.py tests/test_defender_e2e.py

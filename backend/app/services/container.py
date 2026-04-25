@@ -7,6 +7,7 @@ Handles: build, spawn, patch application, test execution, cleanup.
 import asyncio
 import logging
 import tempfile
+import re
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -76,27 +77,29 @@ class ContainerManager:
         )
         return container
 
-    async def apply_patch(self, container: Container, patch: str) -> bool:
-        """Apply a unified diff patch inside the container."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
-            f.write(patch)
-            f.flush()
-            patch_path = f.name
+    async def apply_patch(
+        self, container: Container, patch: str, challenge_dir: str
+    ) -> bool:
+        """Apply a unified diff patch by patching source files on the host and copying them in."""
+        try:
+            updated_files = _apply_unified_diff(
+                patch,
+                Path(challenge_dir) / "code",
+            )
+        except Exception as exc:
+            logger.warning("Failed to parse/apply patch: %s", exc)
+            return False
+
+        if not updated_files:
+            logger.warning("Patch produced no file updates")
+            return False
 
         loop = asyncio.get_event_loop()
-
         await loop.run_in_executor(
             None,
-            lambda: container.put_archive("/tmp", _make_tar(patch_path, "fix.patch")),
+            lambda: container.put_archive("/app", _make_tar_from_files(updated_files)),
         )
-
-        exit_code, output = await loop.run_in_executor(
-            None,
-            lambda: container.exec_run("git apply /tmp/fix.patch", workdir="/app"),
-        )
-
-        Path(patch_path).unlink(missing_ok=True)
-        return exit_code == 0
+        return True
 
     async def run_test(
         self, container: Container, test_path: str, timeout: int = 10
@@ -162,6 +165,94 @@ def _make_tar(file_path: str, arcname: str) -> bytes:
         tar.add(file_path, arcname=arcname)
     buf.seek(0)
     return buf.read()
+
+
+def _make_tar_from_files(files: dict[str, str]) -> bytes:
+    import io
+    import tarfile
+
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w") as tar:
+        for relative_path, content in files.items():
+            encoded = content.encode("utf-8")
+            info = tarfile.TarInfo(name=relative_path)
+            info.size = len(encoded)
+            tar.addfile(info, io.BytesIO(encoded))
+    data.seek(0)
+    return data.read()
+
+
+def _apply_unified_diff(patch: str, source_dir: Path) -> dict[str, str]:
+    files: dict[str, list[tuple[int, list[str]]]] = {}
+    current_file: str | None = None
+    current_hunks: list[tuple[int, list[str]]] = []
+    current_hunk_lines: list[str] = []
+    current_old_start: int | None = None
+
+    for line in patch.splitlines():
+        if line.startswith("diff --git "):
+            if current_file is not None:
+                if current_old_start is not None:
+                    current_hunks.append((current_old_start, current_hunk_lines))
+                files[current_file] = current_hunks
+            parts = line.split()
+            current_file = parts[2][2:]
+            current_hunks = []
+            current_hunk_lines = []
+            current_old_start = None
+            continue
+
+        if line.startswith("@@"):
+            if current_old_start is not None:
+                current_hunks.append((current_old_start, current_hunk_lines))
+            match = re.match(r"@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@", line)
+            if not match:
+                raise ValueError(f"Unsupported hunk header: {line}")
+            current_old_start = int(match.group(1))
+            current_hunk_lines = []
+            continue
+
+        if current_old_start is not None and line[:1] in {" ", "+", "-"}:
+            current_hunk_lines.append(line)
+
+    if current_file is not None:
+        if current_old_start is not None:
+            current_hunks.append((current_old_start, current_hunk_lines))
+        files[current_file] = current_hunks
+
+    updated_files: dict[str, str] = {}
+    for relative_path, hunks in files.items():
+        resolved = (source_dir / relative_path).resolve()
+        if source_dir.resolve() not in resolved.parents and resolved != source_dir.resolve():
+            raise ValueError(f"Patch escapes challenge directory: {relative_path}")
+        original_lines = resolved.read_text().splitlines()
+        new_lines: list[str] = []
+        cursor = 0
+
+        for old_start, hunk_lines in hunks:
+            target_index = old_start - 1
+            new_lines.extend(original_lines[cursor:target_index])
+            cursor = target_index
+
+            for hunk_line in hunk_lines:
+                marker = hunk_line[0]
+                content = hunk_line[1:]
+                if marker == " ":
+                    if cursor >= len(original_lines) or original_lines[cursor] != content:
+                        raise ValueError(f"Context mismatch while applying patch to {relative_path}")
+                    new_lines.append(original_lines[cursor])
+                    cursor += 1
+                elif marker == "-":
+                    if cursor >= len(original_lines) or original_lines[cursor] != content:
+                        raise ValueError(f"Removal mismatch while applying patch to {relative_path}")
+                    cursor += 1
+                elif marker == "+":
+                    new_lines.append(content)
+
+        new_lines.extend(original_lines[cursor:])
+        updated_files[relative_path] = "\n".join(new_lines) + "\n"
+
+    return updated_files
 
 
 _manager: ContainerManager | None = None

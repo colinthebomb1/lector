@@ -32,7 +32,7 @@ async def grade_submission(challenge: Challenge, patch: str) -> GradeResult:
     container = await cm.spawn_container(image_tag)
 
     try:
-        applied = await cm.apply_patch(container, patch)
+        applied = await cm.apply_patch(container, patch, challenge.base_path)
         if not applied:
             return GradeResult(
                 status=GradeStatus.FAILED,
