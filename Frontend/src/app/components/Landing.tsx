@@ -195,7 +195,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
           <div className="flex flex-col gap-7">
             <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 border border-accent/30 bg-accent/5 rounded-full text-[11px] uppercase tracking-[0.2em] text-accent animate-fadeInUp">
               <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
-              LA Hacks 2026 · Light the Way
+              Reading practice for engineers
             </div>
 
             <h1
@@ -241,7 +241,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
-                Gemma reading checks
+                AI-graded reading checks
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
@@ -362,7 +362,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <PipelineStep
                 index="01"
                 title="Read"
-                body="Open the file in Monaco. Write a 1–2 sentence summary of what it does. Gemma compares it to the reference rubric — you can't move on until you actually understand the code."
+                body="Open the file in the editor. Write a 1–2 sentence summary of what it does. The reading check compares it to the reference rubric — you can't move on until you actually understand the code."
               />
               <PipelineStep
                 index="02"
@@ -390,8 +390,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                   <div className="mt-2 text-sm text-foreground/80">Replays the original consequence in a sandboxed Docker container. Same spine for both tracks.</div>
                 </div>
                 <div className="border border-border bg-background/60 rounded p-4">
-                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">gemma</div>
-                  <div className="mt-2 text-sm text-foreground/80">Reading checks, adaptive hints, rubric-graded explanations, post-solve writeups.</div>
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">coach</div>
+                  <div className="mt-2 text-sm text-foreground/80">Reading checks, adaptive hints, rubric-graded explanations, and post-solve writeups.</div>
                 </div>
               </div>
             </div>
@@ -462,7 +462,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                     Moves <span className="text-accent">amount</span> from one account to another if
                     funds are sufficient.
                   </div>
-                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2">gemma feedback</div>
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2">reading check</div>
                   <div className="border border-yellow-400/30 bg-yellow-400/5 rounded p-3 text-sm text-yellow-200/90 leading-relaxed">
                     Almost — you didn't mention what happens with{' '}
                     <span className="text-yellow-300">concurrent</span> transfers. Re-read lines 4–6
@@ -503,8 +503,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                 pass without breaking others? <span className="text-accent">Ask the grader</span>.
               </p>
               <div className="mt-6 inline-flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="px-2 py-0.5 border border-accent/30 text-accent text-[10px] uppercase tracking-widest">cognition</span>
-                <span>Augment the agent with execution-grounded validation.</span>
+                <span className="px-2 py-0.5 border border-accent/30 text-accent text-[10px] uppercase tracking-widest">mcp</span>
+                <span>Execution-grounded validation, on tap.</span>
               </div>
             </div>
 
@@ -513,14 +513,14 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <div className="relative bg-[#0B0D13] border border-accent/20 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-[#14171F] text-xs text-muted-foreground font-mono">
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-                  claude-code · mcp · lector.verify
+                  agent · mcp · lector.verify
                 </div>
                 <div className="p-5 font-mono text-[12.5px] leading-relaxed">
-                  <div className="text-foreground/60">// claude is editing auth/login.py</div>
+                  <div className="text-foreground/60">// agent is editing auth/login.py</div>
                   <div className="mt-2 text-foreground">→ <span className="text-accent">lector.verify</span>(challenge=<span className="text-yellow-200">"sqli-login"</span>, patch=diff)</div>
                   <div className="mt-2 text-red-400/80">  ✗ vulnerability still present</div>
                   <div className="text-muted-foreground">    exploit response: 200 OK · admin flag returned</div>
-                  <div className="mt-3 text-foreground/60">// claude rewrites the patch</div>
+                  <div className="mt-3 text-foreground/60">// agent rewrites the patch</div>
                   <div className="mt-2 text-foreground">→ <span className="text-accent">lector.verify</span>(challenge=<span className="text-yellow-200">"sqli-login"</span>, patch=diff_v2)</div>
                   <div className="mt-2 text-accent glow-text-accent">  ✓ exploit neutralized · 12 / 12 tests pass</div>
                   <div className="mt-3 text-muted-foreground">    graded in 18.7s · ready to commit.</div>
@@ -568,7 +568,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <span className="text-accent">L</span>
               <span className="text-accent">_</span>
             </div>
-            <span className="text-xs text-muted-foreground">© 2026 Lector · LA Hacks</span>
+            <span className="text-xs text-muted-foreground">© 2026 Lector</span>
           </div>
           <div className="flex items-center gap-6 text-xs text-muted-foreground">
             <a href="#tracks" className="hover:text-foreground transition-colors">Tracks</a>
