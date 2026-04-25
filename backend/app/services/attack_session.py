@@ -8,6 +8,7 @@ a proxied browser view.
 
 import asyncio
 import logging
+import secrets
 import time
 from dataclasses import dataclass, field
 
@@ -34,6 +35,8 @@ class AttackSession:
     challenge_id: str
     container_id: str
     port: int
+    expected_flag: str
+    admin_password: str
     created_at: float = field(default_factory=time.time)
     payloads: list[AttackPayload] = field(default_factory=list)
 
@@ -54,6 +57,7 @@ async def start_attack_session(
     user_session_id: str,
     challenge_id: str,
     challenge_base_path: str,
+    challenge_flag: str | None = None,
 ) -> AttackSession:
     """Build and start the vulnerable app container, return an AttackSession."""
     session_key = f"{user_session_id}:{challenge_id}"
@@ -70,6 +74,8 @@ async def start_attack_session(
     client = _get_docker()
     image_tag = f"lector-challenge-{challenge_id}:latest"
     loop = asyncio.get_event_loop()
+    expected_flag = _build_session_flag(challenge_flag)
+    admin_password = _build_admin_password()
 
     try:
         await loop.run_in_executor(None, lambda: client.images.get(image_tag))
@@ -86,6 +92,10 @@ async def start_attack_session(
             image_tag,
             detach=True,
             ports={"5000/tcp": None},
+            environment={
+                "LECTOR_FLAG": expected_flag,
+                "LECTOR_ADMIN_PASSWORD": admin_password,
+            },
             mem_limit="256m",
             cpu_period=100000,
             cpu_quota=50000,
@@ -111,6 +121,8 @@ async def start_attack_session(
         challenge_id=challenge_id,
         container_id=container.id,
         port=host_port,
+        expected_flag=expected_flag,
+        admin_password=admin_password,
     )
     _sessions[session_key] = attack_session
     logger.info(
@@ -118,6 +130,18 @@ async def start_attack_session(
         user_session_id, challenge_id, host_port, container.short_id,
     )
     return attack_session
+
+
+def _build_session_flag(base_flag: str | None) -> str:
+    body = "sqli_login_bypass"
+    if base_flag and base_flag.startswith("FLAG{") and base_flag.endswith("}"):
+        body = base_flag[5:-1]
+    suffix = secrets.token_hex(4)
+    return f"FLAG{{{body}_{suffix}}}"
+
+
+def _build_admin_password() -> str:
+    return f"Acm3!{secrets.token_hex(4)}"
 
 
 async def _wait_for_ready(port: int, timeout: int = 15) -> None:

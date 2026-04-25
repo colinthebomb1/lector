@@ -65,6 +65,7 @@ async def start_attack(challenge_id: str, user: dict = Depends(require_session))
             user_session_id=user["session_id"],
             challenge_id=challenge_id,
             challenge_base_path=challenge.base_path,
+            challenge_flag=challenge.metadata.flag,
         )
     except TimeoutError:
         raise HTTPException(status_code=504, detail="Container failed to start in time")
@@ -98,6 +99,9 @@ async def submit_flag(
         raise HTTPException(status_code=404, detail="Challenge not found")
 
     expected_flag = challenge.metadata.flag
+    active_session = get_attack_session(user["session_id"], challenge_id)
+    if active_session:
+        expected_flag = active_session.expected_flag
     if not expected_flag:
         raise HTTPException(status_code=400, detail="Challenge has no flag configured")
 

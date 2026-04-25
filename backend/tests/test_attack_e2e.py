@@ -37,9 +37,15 @@ def make_real_challenge() -> Challenge:
 @pytest.fixture
 def e2e_client(monkeypatch):
     try:
-        docker.from_env().ping()
+        docker_client = docker.from_env()
+        docker_client.ping()
     except Exception as exc:
         pytest.skip(f"Docker not available for E2E test: {exc}")
+
+    try:
+        docker_client.images.remove("lector-challenge-sqli-login-bypass:latest", force=True)
+    except docker.errors.ImageNotFound:
+        pass
 
     attack_session._sessions.clear()
     attack_session._client = None
@@ -83,11 +89,15 @@ def test_sqli_attack_flow_e2e(e2e_client):
         admin = exploit
 
     assert admin.status_code == 200
-    assert "FLAG{sql_injection_is_not_authentication}" in admin.text
+    marker = "FLAG{"
+    start_index = admin.text.index(marker)
+    end_index = admin.text.index("}", start_index)
+    captured_flag = admin.text[start_index:end_index + 1]
+    assert captured_flag.startswith("FLAG{sql_injection_is_not_authentication_")
 
     flag = e2e_client.post(
         f"/api/attack/{challenge_id}/flag",
-        json={"flag": "FLAG{sql_injection_is_not_authentication}"},
+        json={"flag": captured_flag},
     )
     assert flag.status_code == 200
     assert flag.json()["accepted"] is True

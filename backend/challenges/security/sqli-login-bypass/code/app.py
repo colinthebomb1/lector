@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from pathlib import Path
 from flask import Flask, request, redirect, session, render_template_string
 
@@ -9,7 +10,11 @@ DATABASE = "acme.db"
 SECRETS_DIR = Path("/app/secret")
 
 
-def read_secret(name: str) -> str:
+def read_secret(name: str, env_var: str | None = None) -> str:
+    if env_var:
+        value = os.environ.get(env_var)
+        if value:
+            return value
     return (SECRETS_DIR / name).read_text(encoding="utf-8").strip()
 
 
@@ -20,7 +25,7 @@ def get_db():
 
 
 def init_db():
-    admin_password = read_secret("admin_password.txt")
+    admin_password = read_secret("admin_password.txt", "LECTOR_ADMIN_PASSWORD")
     conn = get_db()
     conn.execute(
         "CREATE TABLE IF NOT EXISTS users "
@@ -209,7 +214,7 @@ def admin():
         ADMIN_PAGE,
         username=session.get("username", "unknown"),
         role=session.get("role", "unknown"),
-        flag=read_secret("flag.txt"),
+        flag=read_secret("flag.txt", "LECTOR_FLAG"),
     )
 
 

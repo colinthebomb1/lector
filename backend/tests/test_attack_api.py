@@ -151,10 +151,17 @@ def test_submit_flag_accepts_correct_flag_and_records_submission(client, monkeyp
     monkeypatch.setattr(attack, "get_challenge", lambda challenge_id: make_challenge())
     monkeypatch.setattr(attack, "is_db_connected", lambda: True)
     monkeypatch.setattr(attack, "get_db", lambda: fake_db)
+    monkeypatch.setattr(
+        attack,
+        "get_attack_session",
+        lambda user_id, challenge_id: SimpleNamespace(
+            expected_flag="FLAG{sql_injection_is_not_authentication_ab12cd34}"
+        ),
+    )
 
     response = client.post(
         "/api/attack/sqli-login-bypass/flag",
-        json={"flag": "FLAG{sql_injection_is_not_authentication}"},
+        json={"flag": "FLAG{sql_injection_is_not_authentication_ab12cd34}"},
     )
 
     assert response.status_code == 200
@@ -174,10 +181,17 @@ def test_submit_flag_rejects_incorrect_flag(client, monkeypatch):
     monkeypatch.setattr(attack, "get_challenge", lambda challenge_id: make_challenge())
     monkeypatch.setattr(attack, "is_db_connected", lambda: True)
     monkeypatch.setattr(attack, "get_db", lambda: fake_db)
+    monkeypatch.setattr(
+        attack,
+        "get_attack_session",
+        lambda user_id, challenge_id: SimpleNamespace(
+            expected_flag="FLAG{sql_injection_is_not_authentication_ab12cd34}"
+        ),
+    )
 
     response = client.post(
         "/api/attack/sqli-login-bypass/flag",
-        json={"flag": "FLAG{wrong_flag}"},
+        json={"flag": "FLAG{sql_injection_is_not_authentication}"},
     )
 
     assert response.status_code == 200
@@ -185,6 +199,24 @@ def test_submit_flag_rejects_incorrect_flag(client, monkeypatch):
     assert body["accepted"] is False
     assert fake_db.submissions.inserted[0]["result"]["status"] == GradeStatus.FAILED
     assert fake_db.users.update_calls == []
+
+
+def test_start_attack_generates_session_specific_secrets(client, monkeypatch):
+    async def fake_start_attack_session(**kwargs):
+        assert kwargs["challenge_flag"] == "FLAG{sql_injection_is_not_authentication}"
+        return SimpleNamespace(
+            port=5050,
+            expected_flag="FLAG{sql_injection_is_not_authentication_deadbeef}",
+            admin_password="Acm3!facecafe",
+        )
+
+    monkeypatch.setattr(attack, "get_challenge", lambda challenge_id: make_challenge())
+    monkeypatch.setattr(attack, "start_attack_session", fake_start_attack_session)
+
+    response = client.post("/api/attack/sqli-login-bypass/start")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
 
 
 def test_proxy_returns_404_without_active_session(client, monkeypatch):
