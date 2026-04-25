@@ -20,12 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class AttackPayload:
+    path: str
+    method: str
+    form_data: dict[str, str]
+    response_status: int
+    timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
 class AttackSession:
     session_id: str
     challenge_id: str
     container_id: str
     port: int
     created_at: float = field(default_factory=time.time)
+    payloads: list[AttackPayload] = field(default_factory=list)
 
 
 _sessions: dict[str, AttackSession] = {}
@@ -84,8 +94,12 @@ async def start_attack_session(
         ),
     )
 
-    container.reload()
-    port_bindings = container.attrs["NetworkSettings"]["Ports"].get("5000/tcp")
+    for _ in range(10):
+        await asyncio.sleep(0.5)
+        await loop.run_in_executor(None, container.reload)
+        port_bindings = container.attrs["NetworkSettings"]["Ports"].get("5000/tcp")
+        if port_bindings:
+            break
     if not port_bindings:
         raise RuntimeError("Container started but no port binding found")
     host_port = int(port_bindings[0]["HostPort"])
@@ -125,6 +139,34 @@ async def _wait_for_ready(port: int, timeout: int = 15) -> None:
 
 def get_attack_session(user_session_id: str, challenge_id: str) -> AttackSession | None:
     return _sessions.get(f"{user_session_id}:{challenge_id}")
+
+
+def record_payload(
+    user_session_id: str,
+    challenge_id: str,
+    path: str,
+    method: str,
+    form_data: dict[str, str],
+    response_status: int,
+) -> None:
+    session = get_attack_session(user_session_id, challenge_id)
+    if session is None:
+        return
+    session.payloads.append(
+        AttackPayload(
+            path=path,
+            method=method,
+            form_data=form_data,
+            response_status=response_status,
+        )
+    )
+
+
+def get_payloads(user_session_id: str, challenge_id: str) -> list[AttackPayload]:
+    session = get_attack_session(user_session_id, challenge_id)
+    if session is None:
+        return []
+    return list(session.payloads)
 
 
 async def stop_attack_session(user_session_id: str, challenge_id: str) -> bool:

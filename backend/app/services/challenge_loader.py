@@ -40,8 +40,11 @@ def load_challenges() -> dict[str, Challenge]:
             code_dir = challenge_dir / "code"
             if code_dir.exists():
                 for f in code_dir.rglob("*"):
-                    if f.is_file():
-                        code_files[str(f.relative_to(code_dir))] = f.read_text()
+                    if f.is_file() and f.suffix not in (".db", ".sqlite", ".sqlite3", ".pyc", ".so", ".o"):
+                        try:
+                            code_files[str(f.relative_to(code_dir))] = f.read_text()
+                        except UnicodeDecodeError:
+                            continue
 
             ref_summary = ""
             ref_path = challenge_dir / "solution" / "reference.md"

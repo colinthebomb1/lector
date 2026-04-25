@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     mongo_db: str = "lector"
 
     gemma_api_key: str = ""
-    gemma_model: str = "gemma-3"
+    gemma_model: str = "gemma-3-27b-it"
 
     docker_base_url: str = "unix:///var/run/docker.sock"
     container_timeout: int = 25
