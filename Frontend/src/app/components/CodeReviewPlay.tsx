@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import confetti from 'canvas-confetti';
 import { api, type ChallengeSummary, type CurrentUser } from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 import {
@@ -41,6 +42,7 @@ export function CodeReviewPlay({
   const [aiHintProgress, setAiHintProgress] = useState<string | null>(null);
   const [loadingAiHint, setLoadingAiHint] = useState(false);
   const [aiHintHistory, setAiHintHistory] = useState<string[]>([]);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // If the user clicks between two code-review challenges in one session, reset.
   useEffect(() => {
@@ -53,7 +55,38 @@ export function CodeReviewPlay({
     setAiHintProgress(null);
     setLoadingAiHint(false);
     setAiHintHistory([]);
+    setShowSuccessModal(false);
   }, [reviewChallenge]);
+
+  useEffect(() => {
+    if (!verdict?.passed) return;
+
+    setShowSuccessModal(true);
+
+    const end = Date.now() + 1800;
+    const colors = ['#f59e0b', '#34d399', '#60a5fa', '#f472b6'];
+    const frame = () => {
+      confetti({
+        particleCount: 8,
+        angle: 60,
+        spread: 70,
+        origin: { x: 0.1, y: 0 },
+        colors,
+      });
+      confetti({
+        particleCount: 8,
+        angle: 120,
+        spread: 70,
+        origin: { x: 0.9, y: 0 },
+        colors,
+      });
+      if (Date.now() < end) {
+        window.requestAnimationFrame(frame);
+      }
+    };
+
+    frame();
+  }, [verdict]);
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -231,16 +264,14 @@ export function CodeReviewPlay({
                     </div>
 
                     <div className="h-full min-h-0 overflow-y-auto px-4 py-3 space-y-3">
-                      {verdict && (
+                      {verdict && !verdict.passed && (
                         <div
                           className={`rounded border px-3 py-2 text-sm ${
-                            verdict.passed
-                              ? 'text-green-400 border-green-400/30 bg-green-400/5'
-                              : 'text-red-400 border-red-400/30 bg-red-400/5'
+                            'text-red-400 border-red-400/30 bg-red-400/5'
                           }`}
                         >
                           <p className="text-[10px] uppercase tracking-[0.18em] mb-1">
-                            {verdict.passed ? 'Passed' : 'Try again'}
+                            Try again
                           </p>
                           <p className="text-foreground/90">{verdict.message}</p>
                         </div>
@@ -297,12 +328,14 @@ export function CodeReviewPlay({
                 </div>
                 <span
                   className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${
-                    dirty
+                    verdict?.passed
+                      ? 'text-green-300 border-green-300/40 bg-green-300/5'
+                      : dirty
                       ? 'text-amber-300 border-amber-300/40 bg-amber-300/5'
                       : 'text-muted-foreground border-border/70 bg-background/40'
                   }`}
                 >
-                  {dirty ? 'Unsaved edits' : 'Untouched'}
+                  {verdict?.passed ? 'Passed' : dirty ? 'In Progress' : 'Not Started'}
                 </span>
               </div>
               <div className="flex-1 min-h-0 p-4">
@@ -334,6 +367,94 @@ export function CodeReviewPlay({
           </div>
         )}
       </main>
+
+      {showSuccessModal && verdict?.passed && (
+        <CodeReviewSuccessModal
+          challengeName={challenge.name}
+          feedback={verdict.message}
+          onReturnToDashboard={onExit}
+          onDismiss={() => setShowSuccessModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface CodeReviewSuccessModalProps {
+  challengeName: string;
+  feedback: string;
+  onReturnToDashboard: () => void;
+  onDismiss: () => void;
+}
+
+function CodeReviewSuccessModal({
+  challengeName,
+  feedback,
+  onReturnToDashboard,
+  onDismiss,
+}: CodeReviewSuccessModalProps) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="code-review-success-title"
+      className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+    >
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={onDismiss}
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-default"
+      />
+      <div className="relative w-full max-w-lg border border-green-400/40 rounded-lg bg-card shadow-[0_0_60px_-15px_rgba(74,222,128,0.45)] overflow-hidden animate-fadeInUp">
+        <div className="px-6 pt-6 pb-4 border-b border-border/70 bg-green-400/5">
+          <p className="text-[10px] uppercase tracking-[0.25em] text-green-400 font-semibold">
+            Challenge Passed
+          </p>
+          <h3
+            id="code-review-success-title"
+            className="text-xl text-foreground mt-2"
+          >
+            Congratulations, Challenge Passed!
+          </h3>
+          <p className="text-sm text-muted-foreground mt-2">
+            You successfully completed{' '}
+            <span className="text-foreground">{challengeName}</span>.
+          </p>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded border border-green-400/25 bg-green-400/5 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-green-300 mb-2">
+              Graded Feedback
+            </p>
+            <p className="text-sm text-foreground/90">{feedback}</p>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent transition-colors"
+            >
+              Keep Reviewing
+            </button>
+            <button
+              type="button"
+              onClick={onReturnToDashboard}
+              className="px-4 py-2 text-xs uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 transition-colors"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
