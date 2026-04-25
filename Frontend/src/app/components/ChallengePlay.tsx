@@ -57,6 +57,7 @@ export function ChallengePlay({
   const [history, setHistory] = useState<SubmissionHistory | null>(null);
   const [payloads, setPayloads] = useState<AttackPayloadRecord[]>([]);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
+  const [showHintConfirmModal, setShowHintConfirmModal] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode | null>(null);
   const [editedFiles, setEditedFiles] = useState<Record<string, string>>({});
   const [submittingPatch, setSubmittingPatch] = useState(false);
@@ -182,6 +183,11 @@ export function ChallengePlay({
     }
   }, [challengeId]);
 
+  const handleConfirmHint = useCallback(async () => {
+    setShowHintConfirmModal(false);
+    await handleHint();
+  }, [handleHint]);
+
   // Drag-to-resize between source code and browser panes.
   useEffect(() => {
     if (!dragging) return;
@@ -276,6 +282,7 @@ export function ChallengePlay({
   const recentSubmissions = history?.submissions.slice(0, 6) ?? [];
   const recentPayloads = payloads.slice(-6).reverse();
   const progress = history?.progress;
+  const defendHints = useMemo(() => buildDefendHints(challenge), [challenge]);
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -490,13 +497,17 @@ export function ChallengePlay({
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleHint()}
+                      onClick={() => setShowHintConfirmModal(true)}
                       disabled={loadingHint || status.kind !== 'ready'}
-                      className="px-3 py-1.5 text-xs uppercase tracking-wider border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                      className="px-3 py-1.5 text-xs uppercase tracking-wider border border-orange-400/50 text-orange-300 bg-orange-400/10 rounded hover:bg-orange-400/15 hover:border-orange-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                     >
-                      {loadingHint ? '...' : 'Hint'}
+                      {loadingHint ? '...' : 'AI Hint'}
                     </button>
                   </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Static hints are fixed challenge clues. AI hints analyze your recent attack
+                    attempts in this run.
+                  </p>
                   {flagFeedback && (
                     <p
                       className={`text-xs px-3 py-1.5 rounded border ${
@@ -512,6 +523,33 @@ export function ChallengePlay({
                     <p className="text-xs text-foreground/80 bg-background border border-border rounded px-3 py-2 whitespace-pre-wrap">
                       {hint}
                     </p>
+                  )}
+                  {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
+                    <div className="pt-2 border-t border-border/70 space-y-2">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
+                        Static Attack Hints
+                      </p>
+                      <div className="space-y-2">
+                        {challenge.hint_tiers.map((hintTier) => (
+                          <details
+                            key={hintTier.tier}
+                            className="border border-border/70 rounded bg-background/75 overflow-hidden group"
+                          >
+                            <summary className="list-none cursor-pointer px-3 py-2 flex items-center justify-between gap-3">
+                              <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
+                                Hint {hintTier.tier}
+                              </span>
+                              <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
+                                ▾
+                              </span>
+                            </summary>
+                            <div className="px-3 pb-3 border-t border-border/70">
+                              <p className="text-sm text-foreground/80 pt-2">{hintTier.text}</p>
+                            </div>
+                          </details>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -540,6 +578,7 @@ export function ChallengePlay({
             submittingPatch={submittingPatch}
             patchResult={patchResult}
             recentSubmissions={recentSubmissions}
+            defendHints={defendHints}
           />
         ) : (
           <OverviewStage
@@ -563,6 +602,73 @@ export function ChallengePlay({
           onDismiss={() => setShowCaptureModal(false)}
         />
       )}
+
+      {showHintConfirmModal && (
+        <HintConfirmModal
+          onDismiss={() => setShowHintConfirmModal(false)}
+          onConfirm={() => void handleConfirmHint()}
+        />
+      )}
+    </div>
+  );
+}
+
+interface HintConfirmModalProps {
+  onDismiss: () => void;
+  onConfirm: () => void;
+}
+
+function HintConfirmModal({ onDismiss, onConfirm }: HintConfirmModalProps) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hint-confirm-title"
+      className="fixed inset-0 z-[110] flex items-center justify-center px-4"
+    >
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={onDismiss}
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-default"
+      />
+      <div className="relative w-full max-w-md border border-orange-400/50 rounded-lg bg-card shadow-[0_0_45px_-15px_rgba(251,146,60,0.45)] overflow-hidden">
+        <div className="px-6 pt-5 pb-4 border-b border-border/70 bg-orange-400/8">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-orange-300 font-semibold">
+            Confirm AI hint
+          </p>
+          <h3 id="hint-confirm-title" className="text-lg text-foreground mt-2">
+            Request an AI-generated attack hint?
+          </h3>
+          <p className="text-sm text-muted-foreground mt-2">
+            AI hints use your recent attack attempts to suggest the next direction. Continue?
+          </p>
+        </div>
+        <div className="px-6 py-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="px-4 py-2 text-xs uppercase tracking-wider rounded border border-orange-400/50 text-orange-200 bg-orange-400/15 hover:bg-orange-400/20 hover:border-orange-300 transition-colors"
+          >
+            Get AI Hint
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -731,33 +837,6 @@ function OverviewStage({
                 <ScenarioBody text={challenge?.scenario ?? ''} />
               </div>
 
-              {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
-                    Hints
-                  </p>
-                  <div className="space-y-3">
-                    {challenge.hint_tiers.map((hintTier) => (
-                      <details
-                        key={hintTier.tier}
-                    className="border border-border/70 rounded bg-background/75 overflow-hidden group"
-                      >
-                        <summary className="list-none cursor-pointer px-3 py-3 flex items-center justify-between gap-3">
-                          <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
-                            Hint {hintTier.tier}
-                          </span>
-                          <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
-                            ▾
-                          </span>
-                        </summary>
-                        <div className="px-3 pb-3 border-t border-border">
-                          <p className="text-sm text-foreground/80 pt-3">{hintTier.text}</p>
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </section>
 
@@ -771,10 +850,16 @@ function OverviewStage({
               <div className="px-4 py-4 grid grid-cols-2 gap-3">
                 <ProgressTile
                   label="Reading Summary"
-                  value={progress?.summary_passed ? 'Passed' : 'Pending'}
+                  value={progress?.summary_passed ? 'Passed' : 'In Progress'}
                 />
-                <ProgressTile label="Attack" value={progress?.attack_captured ? 'Captured' : 'Pending'} />
-                <ProgressTile label="Defend" value={progress?.defend_passed ? 'Passed' : 'Pending'} />
+                <ProgressTile
+                  label="Attack"
+                  value={progress?.attack_captured ? 'Exploit Executed' : 'In Progress'}
+                />
+                <ProgressTile
+                  label="Defend"
+                  value={progress?.defend_passed ? 'Vulnerability Patched' : 'In Progress'}
+                />
                 <ProgressTile label="Attempts" value={String(progress?.attempt_count ?? 0)} />
               </div>
               <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
@@ -858,6 +943,7 @@ interface DefendWorkspaceProps {
   submittingPatch: boolean;
   patchResult: PatchResult | null;
   recentSubmissions: SubmissionRecord[];
+  defendHints: string[];
 }
 
 function DefendWorkspace({
@@ -874,6 +960,7 @@ function DefendWorkspace({
   submittingPatch,
   patchResult,
   recentSubmissions,
+  defendHints,
 }: DefendWorkspaceProps) {
   const selectedReferenceFile = referenceFile ?? codeFileNames[0] ?? '';
   const selectedEditorFile = editorFile ?? codeFileNames[0] ?? '';
@@ -923,20 +1010,19 @@ function DefendWorkspace({
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-        <div className="px-5 py-4 border-b border-border/80 bg-background/35 flex-shrink-0">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
-            Defend Workspace
-          </p>
-          <h2 className="text-lg text-foreground mt-1">Patch the vulnerability</h2>
-          <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-            Edit the source directly. We will package your changed files into a patch
-            before sending them to the grader.
-          </p>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-w-0 min-h-0 overflow-hidden flex flex-col border-r border-border/80 bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 min-h-0 overflow-hidden flex flex-col border-r border-border/80 bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+          <div className="px-5 py-4 border-b border-border/80 bg-background/35 flex-shrink-0">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
+              Defend Workspace
+            </p>
+            <h2 className="text-lg text-foreground mt-1">Patch the vulnerability</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+              Edit the source directly. We will package your changed files into a patch
+              before sending them to the grader.
+            </p>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="px-4 py-2 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1 max-w-sm">
                 <p className="text-xs text-foreground/85 font-semibold uppercase tracking-wider">
@@ -1016,9 +1102,10 @@ function DefendWorkspace({
               </button>
             </div>
           </div>
+        </div>
 
-          <aside className="min-w-0 min-h-0 overflow-hidden flex flex-col bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
-            <section className="min-h-0 flex-1 overflow-hidden flex flex-col">
+        <aside className="min-w-0 min-h-0 overflow-hidden flex flex-col bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+          <section className="min-h-0 flex-[0.95] overflow-hidden flex flex-col">
               <div className="px-4 py-2 border-b border-border/80 bg-background/35 text-xs text-foreground/85 font-semibold uppercase tracking-wider flex-shrink-0">
                 Defend Result
               </div>
@@ -1083,9 +1170,41 @@ function DefendWorkspace({
                   <EmptyState text="No patch grade yet. Submit changes to see the verdict." />
                 )}
               </div>
-            </section>
+          </section>
 
-            <section className="min-h-0 flex-[0.9] overflow-hidden flex flex-col border-t border-border/80">
+          <section className="min-h-0 flex-[0.75] overflow-hidden flex flex-col border-t border-border/80">
+            <div className="px-4 py-2 border-b border-border/80 bg-background/35 text-xs text-foreground/85 font-semibold uppercase tracking-wider flex-shrink-0">
+              Defense Hints
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                These are static defend hints. AI hints are attack-only and generated from your
+                recent exploit attempts.
+              </p>
+              <div className="space-y-2">
+                {defendHints.map((hintText, index) => (
+                  <details
+                    key={`${index}-${hintText}`}
+                    className="border border-border/70 rounded bg-background/75 overflow-hidden group"
+                  >
+                    <summary className="list-none cursor-pointer px-3 py-2 flex items-center justify-between gap-3">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
+                        Hint {index + 1}
+                      </span>
+                      <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
+                        ▾
+                      </span>
+                    </summary>
+                    <div className="px-3 pb-3 border-t border-border/70">
+                      <p className="text-sm text-foreground/85 pt-2">{hintText}</p>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="min-h-0 flex-[0.9] overflow-hidden flex flex-col border-t border-border/80">
               <div className="px-4 py-2 border-b border-border/80 bg-background/35 text-xs text-foreground/85 font-semibold uppercase tracking-wider flex-shrink-0">
                 Submission History
               </div>
@@ -1098,9 +1217,8 @@ function DefendWorkspace({
                   <EmptyState text="No submission history for this challenge yet." />
                 )}
               </div>
-            </section>
-          </aside>
-        </div>
+          </section>
+        </aside>
       </div>
     </div>
   );
@@ -1204,18 +1322,34 @@ function languageForFile(fileName: string) {
 }
 
 function InfoChip({ label, value }: { label: string; value: string }) {
+  const normalizedValue = value.toLowerCase();
+  const valueTone =
+    label === 'Track'
+      ? 'text-sky-400'
+      : label === 'Difficulty'
+      ? normalizedValue === 'easy'
+        ? 'text-green-400'
+        : normalizedValue === 'medium'
+        ? 'text-orange-400'
+        : normalizedValue === 'hard'
+        ? 'text-red-400'
+        : 'text-foreground'
+      : 'text-foreground';
+
   return (
     <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
       <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">{label}</p>
-      <p className="text-sm text-foreground">{value}</p>
+      <p className={`text-sm ${valueTone}`}>{value}</p>
     </div>
   );
 }
 
 function ProgressTile({ label, value }: { label: string; value: string }) {
   const valueTone =
-    value === 'Passed'
+    value === 'Passed' || value === 'Exploit Executed' || value === 'Vulnerability Patched'
       ? 'text-green-400'
+      : value === 'In Progress'
+      ? 'text-orange-400'
       : value === 'Failed'
       ? 'text-red-400'
       : 'text-foreground';
@@ -1311,6 +1445,33 @@ function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
 
 function EmptyState({ text }: { text: string }) {
   return <div className="px-4 py-6 text-sm text-muted-foreground">{text}</div>;
+}
+
+function buildDefendHints(challenge: ChallengeDetail | null): string[] {
+  if (!challenge) {
+    return [
+      'Keep functionality intact while neutralizing the exploit path.',
+      'Validate and sanitize user input before it reaches sensitive operations.',
+      'Prefer safe APIs (like parameterized queries) over string-built commands.',
+    ];
+  }
+
+  const id = challenge.id.toLowerCase();
+  const category = challenge.category.toLowerCase();
+
+  if (id.includes('sqli') || category.includes('injection')) {
+    return [
+      'Replace string interpolation in SQL with parameterized queries.',
+      'Treat both username and password as untrusted input end-to-end.',
+      'Retest valid login behavior after fixing injection to avoid regressions.',
+    ];
+  }
+
+  return [
+    'Fix the vulnerable code path first, then rerun normal user flows.',
+    'Use allow-lists, strict parsing, or safe library primitives for untrusted input.',
+    'Keep authorization checks server-side and independent from client-controlled data.',
+  ];
 }
 
 interface UserMenuProps {
