@@ -21,7 +21,11 @@ from app.services.attack_session import (
     get_attack_session,
     _sessions,
 )
-from app.services.gemma import generate_attack_hint, _local_fallback_response
+from app.services.gemma import (
+    generate_attack_hint,
+    generate_code_review_hint,
+    _local_fallback_response,
+)
 
 
 def _has_gemma_key() -> bool:
@@ -124,6 +128,59 @@ def test_local_fallback_sqli_attempts():
     assert "hint" in result
     assert "right track" in result["hint"].lower() or "WHERE" in result["hint"]
     print(f"  PASS: SQLi-attempts hint: \"{result['hint'][:80]}...\"")
+
+
+@pytest.mark.asyncio
+async def test_code_review_hint_fallback_no_progress():
+    result = await generate_code_review_hint(
+        challenge_name="Division Factory",
+        challenge_prompt="Review the implementation and look for potential improvements.",
+        language="javascript",
+        starter_code="function createDivider(divisor) {\n  return function divide(value) {\n    return value / divisor;\n  };\n}\n",
+        current_code="function createDivider(divisor) {\n  return function divide(value) {\n    return value / divisor;\n  };\n}\n",
+        rubric_items=[
+            "Reject invalid divisors.",
+            "Reject invalid values passed to the divider.",
+            "Fail explicitly on invalid input.",
+        ],
+        static_hints=["Trace the sample calls."],
+        prior_hints=[],
+    )
+
+    assert "hint" in result
+    assert result["progress"] == "early"
+    assert "trace" in result["hint"].lower() or "sample calls" in result["hint"].lower()
+
+
+@pytest.mark.asyncio
+async def test_code_review_hint_fallback_partial_progress():
+    result = await generate_code_review_hint(
+        challenge_name="Division Factory",
+        challenge_prompt="Review the implementation and look for potential improvements.",
+        language="javascript",
+        starter_code="function createDivider(divisor) {\n  return function divide(value) {\n    return value / divisor;\n  };\n}\n",
+        current_code=(
+            "function createDivider(divisor) {\n"
+            "  if (divisor === 0) {\n"
+            "    throw new Error('bad divisor');\n"
+            "  }\n"
+            "  return function divide(value) {\n"
+            "    return value / divisor;\n"
+            "  };\n"
+            "}\n"
+        ),
+        rubric_items=[
+            "Reject invalid divisors.",
+            "Reject invalid values passed to the divider.",
+            "Fail explicitly on invalid input.",
+        ],
+        static_hints=["Trace the sample calls."],
+        prior_hints=["Start by tracing the sample calls."],
+    )
+
+    assert "hint" in result
+    assert result["progress"] == "partial"
+    assert "created" in result["hint"].lower() or "used" in result["hint"].lower()
 
 
 @pytest.mark.asyncio

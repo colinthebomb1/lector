@@ -32,6 +32,10 @@ export function CodeReviewPlay({
   const [grading, setGrading] = useState(false);
   const [hintIndex, setHintIndex] = useState(0);
   const [revealedHints, setRevealedHints] = useState<string[]>([]);
+  const [aiHint, setAiHint] = useState<string | null>(null);
+  const [aiHintProgress, setAiHintProgress] = useState<string | null>(null);
+  const [loadingAiHint, setLoadingAiHint] = useState(false);
+  const [aiHintHistory, setAiHintHistory] = useState<string[]>([]);
 
   // If the user clicks between two code-review challenges in one session, reset.
   useEffect(() => {
@@ -40,6 +44,10 @@ export function CodeReviewPlay({
     setGrading(false);
     setHintIndex(0);
     setRevealedHints([]);
+    setAiHint(null);
+    setAiHintProgress(null);
+    setLoadingAiHint(false);
+    setAiHintHistory([]);
   }, [reviewChallenge]);
 
   const handleEditorMount: OnMount = (editor, monaco) => {
@@ -74,6 +82,33 @@ export function CodeReviewPlay({
       setGrading(false);
     }, 250);
   }, [code, reviewChallenge]);
+
+  const handleAiHint = useCallback(async () => {
+    if (!reviewChallenge) return;
+    setLoadingAiHint(true);
+    try {
+      const result = await api.codeReviewHint({
+        challenge_id: reviewChallenge.summary.id,
+        challenge_name: reviewChallenge.summary.name,
+        challenge_prompt: reviewChallenge.prompt,
+        language: reviewChallenge.language,
+        starter_code: reviewChallenge.default_code,
+        current_code: code,
+        rubric_items: reviewChallenge.aiHintRubric,
+        static_hints: reviewChallenge.hints,
+        prior_hints: aiHintHistory,
+      });
+      const nextHint = result.hint || result.analysis || 'No hint available right now.';
+      setAiHint(nextHint);
+      setAiHintProgress(result.progress || null);
+      setAiHintHistory((prev) => [...prev, nextHint]);
+    } catch (err) {
+      setAiHint(err instanceof Error ? err.message : 'Hint request failed.');
+      setAiHintProgress(null);
+    } finally {
+      setLoadingAiHint(false);
+    }
+  }, [aiHintHistory, code, reviewChallenge]);
 
   const dirty = reviewChallenge ? code !== reviewChallenge.default_code : false;
   const hintsRemaining = reviewChallenge
@@ -154,6 +189,15 @@ export function CodeReviewPlay({
                   </button>
                   <button
                     type="button"
+                    onClick={() => void handleAiHint()}
+                    disabled={loadingAiHint}
+                    className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded border border-sky-400/50 text-sky-200 bg-sky-400/10 hover:bg-sky-400/15 hover:border-sky-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="Get an adaptive hint based on your current patch"
+                  >
+                    {loadingAiHint ? 'Thinking…' : 'AI Tailored Hint'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleSubmit}
                     disabled={grading}
                     className="px-3 py-1.5 text-[10px] uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -185,6 +229,21 @@ export function CodeReviewPlay({
                       {verdict.passed ? 'Passed' : 'Try again'}
                     </p>
                     <p className="text-foreground/90">{verdict.message}</p>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-muted-foreground">
+                  Static hints are fixed clues. AI hints analyze your current patch against the
+                  learning rubric and get more specific as you get closer.
+                </p>
+
+                {aiHint && (
+                  <div className="rounded border border-sky-400/30 bg-sky-400/5 px-3 py-2 text-sm">
+                    <p className="text-[10px] uppercase tracking-[0.18em] mb-1 text-sky-200">
+                      AI hint
+                      {aiHintProgress ? ` · ${aiHintProgress}` : ''}
+                    </p>
+                    <p className="text-foreground/90 whitespace-pre-wrap">{aiHint}</p>
                   </div>
                 )}
 

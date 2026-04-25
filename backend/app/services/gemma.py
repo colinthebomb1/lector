@@ -108,6 +108,54 @@ async def generate_attack_hint(
     return await _gemma_request(prompt)
 
 
+async def generate_code_review_hint(
+    challenge_name: str,
+    challenge_prompt: str,
+    language: str,
+    starter_code: str,
+    current_code: str,
+    rubric_items: list[str],
+    static_hints: list[str],
+    prior_hints: list[str] | None = None,
+) -> dict:
+    """
+    Analyze a learner's current code-review patch and generate an adaptive hint.
+
+    Returns { hint: str, analysis: str, progress: str }
+    """
+    rubric_text = "\n".join(
+        f"  {idx}. {item}" for idx, item in enumerate(rubric_items, start=1)
+    )
+    static_hint_text = "\n".join(
+        f"  Hint {idx}: {hint}" for idx, hint in enumerate(static_hints, start=1)
+    )
+    prior_hint_text = "\n".join(
+        f"  {idx}. {hint}" for idx, hint in enumerate(prior_hints or [], start=1)
+    )
+    if not prior_hint_text:
+        prior_hint_text = "  (none yet)\n"
+
+    prompt = (
+        "You are a patient code-review tutor helping a student improve a small program.\n"
+        f"Challenge: {challenge_name}\n"
+        f"Language: {language}\n\n"
+        f"Challenge prompt:\n{challenge_prompt}\n\n"
+        f"Starter code:\n```{language}\n{starter_code}\n```\n\n"
+        f"Student's current code:\n```{language}\n{current_code}\n```\n\n"
+        f"Expected rubric:\n{rubric_text}\n\n"
+        f"Static hints already available in the UI (for reference only, do not repeat them verbatim):\n{static_hint_text}\n\n"
+        f"Prior AI hints already shown to the student:\n{prior_hint_text}\n\n"
+        "Analyze how close the student is to the rubric. Then provide one short hint that:\n"
+        "1. Starts broad if they are still far away\n"
+        "2. Gets more specific when they have partially addressed the problem\n"
+        "3. Guides them toward discovering the fix themselves\n"
+        "4. Does not provide the full solution or paste corrected code\n"
+        "5. Stays under 90 words\n\n"
+        "Respond as JSON: {\"hint\": \"<hint>\", \"analysis\": \"<brief assessment>\", \"progress\": \"early|partial|near\"}"
+    )
+    return await _gemma_request(prompt)
+
+
 async def grade_explanation(
     explanation: str, rubric: dict, challenge_context: str = ""
 ) -> dict:
@@ -250,6 +298,109 @@ def _local_fallback_response(prompt: str) -> dict:
         return {
             "hint": "Look at how the login form data gets placed into the SQL query. What would happen if your input contained characters that have special meaning in SQL, like a single quote?",
             "analysis": "Student has made attempts but hasn't tried SQL injection payloads yet.",
+        }
+
+    if "patient code-review tutor" in prompt and "Student's current code:" in prompt:
+        challenge_name = _extract_section(prompt, "Challenge: ", "\nLanguage:")
+        starter_code = _extract_section(
+            prompt, "Starter code:\n```", "```\n\nStudent's current code:"
+        )
+        current_code = _extract_section(
+            prompt, "Student's current code:\n```", "```\n\nExpected rubric:"
+        )
+
+        current_lower = current_code.lower()
+        starter_lower = starter_code.lower()
+        changed = current_lower.strip() != starter_lower.strip()
+
+        if "division factory" in challenge_name.lower():
+            guards_zero = (
+                "divisor === 0" in current_code
+                or "divisor == 0" in current_code
+                or "number.isfinite(divisor)" in current_lower
+                or "isfinite(divisor)" in current_lower
+            )
+            guards_value = (
+                "number.isfinite(value)" in current_lower
+                or "typeof value !== 'number'" in current_lower
+                or 'typeof value !== "number"' in current_lower
+                or "isnan(" in current_lower
+            )
+            explicit_failure = "throw" in current_lower or "return null" in current_lower
+
+            score = sum([guards_zero, guards_value, explicit_failure])
+            if score >= 3:
+                return {
+                    "hint": "You have the key safeguards in place. Make one last pass on edge cases and check whether every invalid path fails deliberately rather than slipping through with a misleading numeric result.",
+                    "analysis": "Student appears very close to the expected safeguards.",
+                    "progress": "near",
+                }
+            if score == 2:
+                missing = (
+                    "how invalid inputs surface to the caller"
+                    if not explicit_failure
+                    else "the remaining input path that still assumes valid numbers"
+                )
+                return {
+                    "hint": f"You're close. One assumption is still unchecked: focus on {missing}, and decide what the function should do when that assumption is violated.",
+                    "analysis": "Student has partially covered the rubric and needs one more guard.",
+                    "progress": "partial",
+                }
+            if score == 1:
+                return {
+                    "hint": "Nice start. There are two moments to reason about here: when the divider is created, and when it is later used. Compare the assumptions at both points and look for the one you have not defended yet.",
+                    "analysis": "Student has begun adding a guard but has not covered the whole flow.",
+                    "progress": "partial",
+                }
+            if changed:
+                return {
+                    "hint": "Look less at syntax and more at assumptions. Ask what must be true about both numbers involved for division to produce a meaningful result, then decide where each assumption belongs.",
+                    "analysis": "Student changed the code but has not yet addressed the core rubric items.",
+                    "progress": "early",
+                }
+            return {
+                "hint": "Start by tracing the sample calls and writing down why JavaScript accepts both of them. Which inputs create results that technically compute, but should probably be treated as invalid in a safer design?",
+                "analysis": "No substantive edits yet.",
+                "progress": "early",
+            }
+
+        if "pointing at" in challenge_name.lower():
+            uses_snprintf = "snprintf(" in current_lower
+            avoids_sprintf = "sprintf(" not in current_lower
+            safe_lifetime = any(
+                token in current_lower
+                for token in ["malloc(", "calloc(", "strdup(", "static char"]
+            ) or ("char *" in current_code and current_code.count("char *") > starter_code.count("char *"))
+            score = sum([uses_snprintf and avoids_sprintf, safe_lifetime, changed])
+            if uses_snprintf and avoids_sprintf and safe_lifetime:
+                return {
+                    "hint": "This is nearly there. Double-check that the caller can tell who owns the returned memory and that every write respects the actual buffer size.",
+                    "analysis": "Student appears close to a correct lifetime and bounds fix.",
+                    "progress": "near",
+                }
+            if safe_lifetime or uses_snprintf:
+                return {
+                    "hint": "You fixed one side of the problem. Now inspect the other: one issue is about how long the returned data remains valid, and the other is about how much data can be written into a fixed-size buffer.",
+                    "analysis": "Student has partially addressed either lifetime or bounds, but not both.",
+                    "progress": "partial",
+                }
+            return {
+                "hint": "Ignore the fact that the program compiles. Instead, ask two review questions: where does the returned memory live after the function exits, and what stops a long name from writing past the available space?",
+                "analysis": "Student has not yet addressed the main pointer-safety concerns.",
+                "progress": "early",
+            }
+
+        if not changed:
+            return {
+                "hint": "Start with the observable behavior and list the assumptions the original code is making. A good first improvement usually comes from defending one assumption the code currently trusts too much.",
+                "analysis": "No substantive edits yet.",
+                "progress": "early",
+            }
+
+        return {
+            "hint": "Compare your current patch against the rubric and ask which expectation is still only implied rather than enforced. Tighten the code around that gap rather than making the fix broader.",
+            "analysis": "Student has made edits, but the fallback cannot determine exact progress.",
+            "progress": "partial",
         }
 
     return {"text": "[Gemma API key not configured - using local fallback]"}

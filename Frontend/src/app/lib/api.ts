@@ -46,6 +46,12 @@ export interface AttackHint {
   attempts_analyzed: number;
 }
 
+export interface CodeReviewAiHint {
+  hint: string;
+  analysis: string;
+  progress: 'early' | 'partial' | 'near' | string;
+}
+
 export interface PatchResult {
   status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
   message?: string;
@@ -159,6 +165,21 @@ export const api = {
   attackHint: (id: string) =>
     request<AttackHint>(`/api/attack/${encodeURIComponent(id)}/hint`, {
       method: 'POST',
+    }),
+  codeReviewHint: (payload: {
+    challenge_id: string;
+    challenge_name: string;
+    challenge_prompt: string;
+    language: string;
+    starter_code: string;
+    current_code: string;
+    rubric_items: string[];
+    static_hints: string[];
+    prior_hints: string[];
+  }) =>
+    request<CodeReviewAiHint>('/api/gemma/code-review-hint', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   attackPayloads: (id: string) =>
     request<AttackPayloadHistory>(`/api/attack/${encodeURIComponent(id)}/payloads`),
