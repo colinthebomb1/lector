@@ -74,11 +74,6 @@ export default function App() {
           setUser(null);
           setView('home');
         }}
-  if (showAuth) {
-    return (
-      <Auth
-        onBackToHome={() => setShowAuth(false)}
-        onAuthenticated={() => setShowAuth(false)}
       />
     );
   }
