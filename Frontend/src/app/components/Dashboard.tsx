@@ -1,11 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type ChallengeSummary, type CurrentUser, type Difficulty } from '../lib/api';
+import {
+  api,
+  type ChallengeSummary,
+  type CurrentUser,
+  type Difficulty,
+  type Track,
+} from '../lib/api';
 
 interface DashboardProps {
   user: CurrentUser;
   onProfileClick: () => void;
   onSelectChallenge?: (challenge: ChallengeSummary) => void;
 }
+
+/** Code-review items shown in the list before the backend has full content. */
+type DashboardChallenge = ChallengeSummary & { isPreview?: boolean };
+
+const CODE_REVIEW_PREVIEWS: DashboardChallenge[] = [
+  {
+    id: 'preview-division-factory',
+    name: 'Division Factory',
+    track: 'code-review',
+    category: 'code review',
+    difficulty: 'medium',
+    description: '',
+    estimated_minutes: 18,
+    isPreview: true,
+  },
+  {
+    id: 'preview-what-are-you-pointing-at',
+    name: 'What Are You Pointing At?',
+    track: 'code-review',
+    category: 'code review',
+    difficulty: 'hard',
+    description: '',
+    estimated_minutes: 22,
+    isPreview: true,
+  },
+];
 
 const DIFFICULTY_TONE: Record<Difficulty, string> = {
   easy: 'text-green-400 border-green-400/30 bg-green-400/5',
@@ -14,6 +46,13 @@ const DIFFICULTY_TONE: Record<Difficulty, string> = {
 };
 
 const ALL = '__all__';
+const ALL_TRACK = '__all__';
+
+const TRACK_OPTIONS: { value: Track; label: string }[] = [
+  { value: 'security', label: 'Security' },
+  { value: 'code-review', label: 'Code review' },
+];
+
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
   easy: 0,
   medium: 1,
@@ -53,6 +92,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
   const [challenges, setChallenges] = useState<ChallengeSummary[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<string>(ALL);
+  const [trackFilter, setTrackFilter] = useState<string>(ALL_TRACK);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,8 +117,33 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     };
   }, []);
 
+  useEffect(() => {
+    if (trackFilter === 'code-review') {
+      setCategory(ALL);
+    }
+  }, [trackFilter]);
+
+  const challengesWithPreviews = useMemo(() => {
+    const byId = new Map<string, ChallengeSummary>();
+    for (const c of challenges) {
+      byId.set(c.id, c);
+    }
+    for (const p of CODE_REVIEW_PREVIEWS) {
+      if (!byId.has(p.id)) {
+        byId.set(p.id, p);
+      }
+    }
+    return Array.from(byId.values());
+  }, [challenges]);
+
   const filtered = useMemo(() => {
-    const scoped = category === ALL ? challenges : challenges.filter((c) => c.category === category);
+    let scoped = challengesWithPreviews;
+    if (trackFilter !== ALL_TRACK) {
+      scoped = scoped.filter((c) => c.track === trackFilter);
+    }
+    if (trackFilter !== 'code-review' && category !== ALL) {
+      scoped = scoped.filter((c) => c.category === category);
+    }
     return [...scoped].sort((a, b) => {
       const difficultyDelta = DIFFICULTY_ORDER[a.difficulty] - DIFFICULTY_ORDER[b.difficulty];
       if (difficultyDelta !== 0) return difficultyDelta;
@@ -86,7 +151,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
       if (minutesDelta !== 0) return minutesDelta;
       return a.name.localeCompare(b.name);
     });
-  }, [challenges, category]);
+  }, [challengesWithPreviews, category, trackFilter]);
 
   const completed = new Set(user.challenges_completed ?? []);
   const streak = user.streak ?? 0;
@@ -102,17 +167,35 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
+            {(trackFilter === ALL_TRACK || trackFilter === 'security') && (
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground hidden md:inline">Category</span>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
+                >
+                  <option value={ALL}>All categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground hidden md:inline">Category</span>
+              <span className="text-muted-foreground hidden md:inline">Track</span>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                value={trackFilter}
+                onChange={(e) => setTrackFilter(e.target.value)}
                 className="bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
               >
-                <option value={ALL}>All categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                <option value={ALL_TRACK}>All tracks</option>
+                {TRACK_OPTIONS.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
                   </option>
                 ))}
               </select>
@@ -152,8 +235,13 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           <h1 className="text-2xl md:text-3xl mb-2">Welcome back, {displayName}.</h1>
           <p className="text-sm text-muted-foreground">
             {filtered.length} challenge{filtered.length === 1 ? '' : 's'}
-            {category !== ALL ? ` in ${category}` : ''} • {completed.size} completed •{' '}
-            {user.total_score ?? 0} points
+            {trackFilter !== ALL_TRACK
+              ? ` · ${TRACK_OPTIONS.find((t) => t.value === trackFilter)?.label ?? trackFilter} track`
+              : ''}
+            {(trackFilter === ALL_TRACK || trackFilter === 'security') && category !== ALL
+              ? ` · ${category}`
+              : ''} • {completed.size}{' '}
+            completed • {user.total_score ?? 0} points
           </p>
         </div>
 
@@ -166,13 +254,15 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
 
         {!loading && !error && filtered.length === 0 && (
           <div className="border border-dashed border-border rounded p-10 text-center text-sm text-muted-foreground">
-            No challenges yet for this category.
+            No challenges match the current filters.
           </div>
         )}
 
         <div className="space-y-2">
           {filtered.map((c) => {
-            const done = completed.has(c.id) || completed.has(`${c.id}:attack`);
+            const row = c as DashboardChallenge;
+            const isPreview = Boolean(row.isPreview);
+            const done = !isPreview && (completed.has(c.id) || completed.has(`${c.id}:attack`));
             return (
               <div
                 key={c.id}
@@ -180,6 +270,11 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
               >
                 <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
                   <span className="text-foreground truncate">{c.name}</span>
+                  {isPreview && (
+                    <span className="text-[10px] uppercase tracking-wider text-cyan-300/90 border border-cyan-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
+                      preview
+                    </span>
+                  )}
                   {done && (
                     <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
                       done
@@ -197,16 +292,25 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
                   </span>
                 </span>
                 <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
-                  ~{c.estimated_minutes} minutes
+                  ~{c.estimated_minutes} min
                 </span>
                 <div className="col-span-4 md:col-span-2 justify-self-end">
-                  <button
-                    type="button"
-                    onClick={() => onSelectChallenge?.(c)}
-                    className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors cursor-pointer"
-                  >
-                    {done ? 'Replay →' : 'Start →'}
-                  </button>
+                  {isPreview ? (
+                    <span
+                      className="inline-block px-4 py-2 text-xs uppercase tracking-wider rounded border border-border text-muted-foreground cursor-not-allowed"
+                      title="Not wired to the grader yet"
+                    >
+                      Coming soon
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onSelectChallenge?.(c)}
+                      className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors cursor-pointer"
+                    >
+                      {done ? 'Replay →' : 'Start →'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
