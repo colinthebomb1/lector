@@ -15,14 +15,18 @@ export function CodeSnippet({ code }: CodeSnippetProps) {
       highlighted = highlighted.replace(/(['"`].*?['"`])/g, '<span class="text-[#50FA7B]">$1</span>');
 
       return (
-        <div key={i} dangerouslySetInnerHTML={{ __html: highlighted }} />
+        <div
+          key={i}
+          className="whitespace-pre-wrap break-words pl-6 -indent-6"
+          dangerouslySetInnerHTML={{ __html: highlighted || '\u200b' }}
+        />
       );
     });
   };
 
   return (
-    <pre className="bg-card p-4 rounded border border-border overflow-x-auto hover:border-accent/30 transition-colors">
-      <code className="text-sm text-foreground/80 block leading-relaxed">
+    <pre className="bg-card p-4 rounded border border-border hover:border-accent/30 transition-colors overflow-hidden">
+      <code className="text-sm text-foreground/80 block leading-relaxed font-mono">
         {highlightCode(code)}
       </code>
     </pre>
