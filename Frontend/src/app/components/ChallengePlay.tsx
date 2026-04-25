@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, type ChallengeDetail, type CurrentUser } from '../lib/api';
+import {
+  api,
+  type AttackPayloadRecord,
+  type ChallengeDetail,
+  type CurrentUser,
+  type SubmissionHistory,
+  type SubmissionRecord,
+} from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 
 interface ChallengePlayProps {
@@ -13,6 +20,7 @@ interface ChallengePlayProps {
 
 type Status =
   | { kind: 'loading' }
+  | { kind: 'overview' }
   | { kind: 'starting' }
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
@@ -38,12 +46,22 @@ export function ChallengePlay({
   const [submittingFlag, setSubmittingFlag] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [loadingHint, setLoadingHint] = useState(false);
-  const [scenarioOpen, setScenarioOpen] = useState(true);
   const [splitPercent, setSplitPercent] = useState(45);
   const [dragging, setDragging] = useState(false);
+  const [history, setHistory] = useState<SubmissionHistory | null>(null);
+  const [payloads, setPayloads] = useState<AttackPayloadRecord[]>([]);
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
+
+  const refreshOverviewData = useCallback(async () => {
+    const [historyResult, payloadHistory] = await Promise.all([
+      api.submissionHistory(challengeId),
+      api.attackPayloads(challengeId),
+    ]);
+    setHistory(historyResult);
+    setPayloads(payloadHistory.payloads);
+  }, [challengeId]);
 
   const stopSession = useCallback(async () => {
     if (stoppedRef.current) return;
@@ -62,17 +80,18 @@ export function ChallengePlay({
     (async () => {
       try {
         setStatus({ kind: 'loading' });
-        const detail = await api.challenge(challengeId);
+        const [detail, historyResult, payloadHistory] = await Promise.all([
+          api.challenge(challengeId),
+          api.submissionHistory(challengeId),
+          api.attackPayloads(challengeId),
+        ]);
         if (cancelled) return;
         setChallenge(detail);
+        setHistory(historyResult);
+        setPayloads(payloadHistory.payloads);
         const fileNames = Object.keys(detail.code_files);
         if (fileNames.length > 0) setActiveFile(fileNames[0]);
-
-        setStatus({ kind: 'starting' });
-        await api.startAttack(challengeId);
-        if (cancelled) return;
-        setProxyUrl(api.proxyUrl(challengeId, '/login'));
-        setStatus({ kind: 'ready' });
+        setStatus({ kind: 'overview' });
       } catch (err) {
         if (!cancelled) {
           setStatus({
@@ -89,6 +108,23 @@ export function ChallengePlay({
     };
   }, [challengeId, stopSession]);
 
+  const handleLaunchWorkspace = useCallback(async () => {
+    setHint(null);
+    setFlagFeedback(null);
+    setStatus({ kind: 'starting' });
+    try {
+      await api.startAttack(challengeId);
+      setProxyUrl(api.proxyUrl(challengeId));
+      setIframeKey((k) => k + 1);
+      setStatus({ kind: 'ready' });
+    } catch (err) {
+      setStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to start challenge',
+      });
+    }
+  }, [challengeId]);
+
   const handleExit = useCallback(async () => {
     await stopSession();
     onExit();
@@ -101,6 +137,7 @@ export function ChallengePlay({
     try {
       const result = await api.submitFlag(challengeId, flag.trim());
       setFlagFeedback({ ok: result.accepted, message: result.message });
+      await refreshOverviewData();
       if (result.accepted) onCompleted();
     } catch (err) {
       setFlagFeedback({
@@ -110,7 +147,7 @@ export function ChallengePlay({
     } finally {
       setSubmittingFlag(false);
     }
-  }, [challengeId, flag, onCompleted]);
+  }, [challengeId, flag, onCompleted, refreshOverviewData]);
 
   const handleHint = useCallback(async () => {
     setLoadingHint(true);
@@ -158,6 +195,10 @@ export function ChallengePlay({
     [challenge],
   );
 
+  const recentSubmissions = history?.submissions.slice(0, 6) ?? [];
+  const recentPayloads = payloads.slice(-6).reverse();
+  const progress = history?.progress;
+
   return (
     <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
       <header className="relative z-50 flex-shrink-0 bg-background/85 backdrop-blur border-b border-border">
@@ -175,20 +216,34 @@ export function ChallengePlay({
             <span className="text-foreground truncate">{challenge?.name ?? 'Loading...'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setScenarioOpen((s) => !s)}
-              className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition-colors"
-              title="Toggle scenario panel"
-            >
-              {scenarioOpen ? 'Hide scenario' : 'Show scenario'}
-            </button>
+            {status.kind === 'ready' || status.kind === 'starting' ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await refreshOverviewData();
+                  } catch {
+                    // Keep the workspace usable even if overview refresh fails.
+                  }
+                  setFlag('');
+                  setHint(null);
+                  setFlagFeedback(null);
+                  setStatus({ kind: 'overview' });
+                }}
+                className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition-colors"
+                title="Back to challenge overview"
+              >
+                Back to Overview
+              </button>
+            ) : null}
             <span
               className={`text-[10px] uppercase tracking-wider px-2 py-1 border rounded ${
                 status.kind === 'ready'
                   ? 'text-green-400 border-green-400/40 bg-green-400/5'
                   : status.kind === 'error'
                   ? 'text-red-400 border-red-400/40 bg-red-400/5'
+                  : status.kind === 'overview'
+                  ? 'text-blue-400 border-blue-400/40 bg-blue-400/5'
                   : 'text-yellow-400 border-yellow-400/40 bg-yellow-400/5'
               }`}
             >
@@ -196,19 +251,32 @@ export function ChallengePlay({
                 ? 'Live'
                 : status.kind === 'error'
                 ? 'Error'
+                : status.kind === 'overview'
+                ? 'Overview'
                 : status.kind === 'starting'
                 ? 'Starting container...'
                 : 'Loading...'}
             </span>
-            <button
-              type="button"
-              onClick={() => setIframeKey((k) => k + 1)}
-              disabled={status.kind !== 'ready'}
-              className="text-xs uppercase tracking-wider px-3 py-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              style={{ backgroundColor: '#0ea5e9', color: '#082f49' }}
-            >
-              Reload
-            </button>
+            {status.kind === 'ready' ? (
+              <button
+                type="button"
+                onClick={() => setIframeKey((k) => k + 1)}
+                disabled={status.kind !== 'ready'}
+                className="text-xs uppercase tracking-wider px-3 py-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ backgroundColor: '#0ea5e9', color: '#082f49' }}
+              >
+                Reload
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleLaunchWorkspace()}
+                disabled={status.kind === 'loading' || status.kind === 'starting'}
+                className="text-xs uppercase tracking-wider px-3 py-1.5 rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {status.kind === 'starting' ? 'Opening...' : 'Open Workspace'}
+              </button>
+            )}
             <UserMenu
               user={user}
               onProfileClick={async () => {
@@ -224,209 +292,427 @@ export function ChallengePlay({
         </div>
       </header>
 
-      <main className="flex-1 flex min-h-0">
-        <ScenarioSidebar
-          open={scenarioOpen}
-          challenge={challenge}
-          onToggle={() => setScenarioOpen((s) => !s)}
-        />
-
-        <div ref={splitContainerRef} className="flex-1 flex min-w-0 relative">
-          {/* Source code pane */}
-          <div
-            className="flex flex-col min-w-0 border-r border-border"
-            style={{ width: `${splitPercent}%` }}
-          >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0">
-              <span className="uppercase tracking-wider">Source</span>
-              <div className="flex flex-wrap gap-1 justify-end">
-                {codeFileNames.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => setActiveFile(name)}
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
-                      activeFile === name
-                        ? 'border-accent text-accent bg-accent/10'
-                        : 'border-border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-4 bg-card/30">
-              {activeFile && challenge ? (
-                <CodeSnippet code={challenge.code_files[activeFile] ?? ''} />
-              ) : (
-                <p className="text-sm text-muted-foreground">No source files loaded.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Drag handle */}
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDoubleClick={handleDoubleClickDivider}
-            className={`relative flex-shrink-0 w-1.5 cursor-col-resize group ${
-              dragging ? 'bg-accent' : 'bg-border hover:bg-accent/60'
-            } transition-colors`}
-            title="Drag to resize • double-click to reset"
-          >
-            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-0.5 pointer-events-none">
-              <span className="block w-0.5 h-1 bg-background/80 rounded" />
-              <span className="block w-0.5 h-1 bg-background/80 rounded" />
-              <span className="block w-0.5 h-1 bg-background/80 rounded" />
-            </span>
-          </div>
-
-          {/* Browser + flag pane */}
-          <div
-            className="flex flex-col min-w-0"
-            style={{ width: `${100 - splitPercent}%` }}
-          >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0 gap-3">
-              <span className="font-mono truncate">{proxyUrl ?? 'about:blank'}</span>
-              <span className="uppercase tracking-wider flex-shrink-0">Target app</span>
-            </div>
-            <div className="relative bg-black flex-1 min-h-0">
-              {/* Block iframe pointer events while dragging so the iframe doesn't swallow mousemove */}
-              {dragging && <div className="absolute inset-0 z-10" />}
-              {status.kind !== 'ready' && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-                  {status.kind === 'error' ? status.message : 'Spinning up sandbox container...'}
+      <main className="flex-1 min-h-0">
+        {status.kind === 'ready' || status.kind === 'starting' || (status.kind === 'error' && proxyUrl) ? (
+          <div className="h-full flex min-h-0">
+            <div ref={splitContainerRef} className="flex-1 flex min-w-0 relative">
+              <div
+                className="flex flex-col min-w-0 border-r border-border"
+                style={{ width: `${splitPercent}%` }}
+              >
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0">
+                  <span className="uppercase tracking-wider">Source</span>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {codeFileNames.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setActiveFile(name)}
+                        className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                          activeFile === name
+                            ? 'border-accent text-accent bg-accent/10'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-              {status.kind === 'ready' && proxyUrl && (
-                <iframe
-                  key={iframeKey}
-                  src={proxyUrl}
-                  title="Vulnerable application"
-                  className="w-full h-full block"
-                  style={{ border: 'none' }}
-                  sandbox="allow-forms allow-scripts allow-same-origin"
-                />
-              )}
-            </div>
-
-            <div className="flex-shrink-0 border-t border-border bg-card/40 px-4 py-3 space-y-2 max-h-[40%] overflow-auto">
-              <div className="flex gap-2 items-center">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground flex-shrink-0">
-                  Flag
-                </span>
-                <input
-                  type="text"
-                  value={flag}
-                  onChange={(e) => setFlag(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleSubmitFlag();
-                  }}
-                  placeholder="FLAG{...}"
-                  className="flex-1 min-w-0 bg-background border border-border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-accent transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitFlag()}
-                  disabled={submittingFlag || !flag.trim()}
-                  className="px-3 py-1.5 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                >
-                  {submittingFlag ? '...' : 'Submit'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleHint()}
-                  disabled={loadingHint || status.kind !== 'ready'}
-                  className="px-3 py-1.5 text-xs uppercase tracking-wider border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                >
-                  {loadingHint ? '...' : 'Hint'}
-                </button>
+                <div className="flex-1 overflow-auto p-4 bg-card/30">
+                  {activeFile && challenge ? (
+                    <CodeSnippet code={challenge.code_files[activeFile] ?? ''} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No source files loaded.</p>
+                  )}
+                </div>
               </div>
-              {flagFeedback && (
-                <p
-                  className={`text-xs px-3 py-1.5 rounded border ${
-                    flagFeedback.ok
-                      ? 'text-green-400 border-green-400/30 bg-green-400/5'
-                      : 'text-red-400 border-red-400/30 bg-red-400/5'
-                  }`}
-                >
-                  {flagFeedback.message}
-                </p>
-              )}
-              {hint && (
-                <p className="text-xs text-foreground/80 bg-background border border-border rounded px-3 py-2 whitespace-pre-wrap">
-                  {hint}
-                </p>
-              )}
+
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDoubleClick={handleDoubleClickDivider}
+                className={`relative flex-shrink-0 w-1.5 cursor-col-resize group ${
+                  dragging ? 'bg-accent' : 'bg-border hover:bg-accent/60'
+                } transition-colors`}
+                title="Drag to resize • double-click to reset"
+              >
+                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-0.5 pointer-events-none">
+                  <span className="block w-0.5 h-1 bg-background/80 rounded" />
+                  <span className="block w-0.5 h-1 bg-background/80 rounded" />
+                  <span className="block w-0.5 h-1 bg-background/80 rounded" />
+                </span>
+              </div>
+
+              <div
+                className="flex flex-col min-w-0"
+                style={{ width: `${100 - splitPercent}%` }}
+              >
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0 gap-3">
+                  <span className="font-mono truncate">{proxyUrl ?? 'about:blank'}</span>
+                  <span className="uppercase tracking-wider flex-shrink-0">Target app</span>
+                </div>
+                <div className="relative bg-black flex-1 min-h-0">
+                  {dragging && <div className="absolute inset-0 z-10" />}
+                  {status.kind !== 'ready' && (
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                      {status.kind === 'error' ? status.message : 'Spinning up sandbox container...'}
+                    </div>
+                  )}
+                  {status.kind === 'ready' && proxyUrl && (
+                    <iframe
+                      key={iframeKey}
+                      src={proxyUrl}
+                      title="Vulnerable application"
+                      className="w-full h-full block"
+                      style={{ border: 'none' }}
+                      sandbox="allow-forms allow-scripts allow-same-origin"
+                    />
+                  )}
+                </div>
+
+                <div className="flex-shrink-0 border-t border-border bg-card/40 px-4 py-3 space-y-2 max-h-[40%] overflow-auto">
+                  <div className="flex gap-2 items-center">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground flex-shrink-0">
+                      Flag
+                    </span>
+                    <input
+                      type="text"
+                      value={flag}
+                      onChange={(e) => setFlag(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleSubmitFlag();
+                      }}
+                      placeholder="FLAG{...}"
+                      className="flex-1 min-w-0 bg-background border border-border rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-accent transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSubmitFlag()}
+                      disabled={submittingFlag || !flag.trim()}
+                      className="px-3 py-1.5 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      {submittingFlag ? '...' : 'Submit'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleHint()}
+                      disabled={loadingHint || status.kind !== 'ready'}
+                      className="px-3 py-1.5 text-xs uppercase tracking-wider border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      {loadingHint ? '...' : 'Hint'}
+                    </button>
+                  </div>
+                  {flagFeedback && (
+                    <p
+                      className={`text-xs px-3 py-1.5 rounded border ${
+                        flagFeedback.ok
+                          ? 'text-green-400 border-green-400/30 bg-green-400/5'
+                          : 'text-red-400 border-red-400/30 bg-red-400/5'
+                      }`}
+                    >
+                      {flagFeedback.message}
+                    </p>
+                  )}
+                  {hint && (
+                    <p className="text-xs text-foreground/80 bg-background border border-border rounded px-3 py-2 whitespace-pre-wrap">
+                      {hint}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <OverviewStage
+            challenge={challenge}
+            history={history}
+            payloads={recentPayloads}
+            onOpenWorkspace={() => void handleLaunchWorkspace()}
+            opening={status.kind === 'starting'}
+            error={status.kind === 'error' ? status.message : null}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-interface ScenarioSidebarProps {
-  open: boolean;
+interface OverviewStageProps {
   challenge: ChallengeDetail | null;
-  onToggle: () => void;
+  history: SubmissionHistory | null;
+  payloads: AttackPayloadRecord[];
+  onOpenWorkspace: () => void;
+  opening: boolean;
+  error: string | null;
 }
 
-function ScenarioSidebar({ open, challenge, onToggle }: ScenarioSidebarProps) {
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex-shrink-0 w-9 border-r border-border bg-card/40 hover:bg-card/60 hover:text-accent text-muted-foreground transition-colors flex items-center justify-center"
-        title="Show scenario"
-        aria-label="Show scenario"
-      >
-        <span className="rotate-180" style={{ writingMode: 'vertical-rl' }}>
-          ◀ Scenario
-        </span>
-      </button>
-    );
-  }
+function OverviewStage({
+  challenge,
+  history,
+  payloads,
+  onOpenWorkspace,
+  opening,
+  error,
+}: OverviewStageProps) {
+  const progress = history?.progress;
+  const recentSubmissions = history?.submissions.slice(0, 5) ?? [];
+  const derivedScore =
+    (progress?.attack_captured ? 50 : 0) +
+    (progress?.defend_passed ? 100 : 0);
+  const displayScore = Math.max(progress?.total_score_awarded ?? 0, derivedScore);
 
   return (
-    <aside className="flex-shrink-0 w-[340px] border-r border-border bg-card/30 flex flex-col min-h-0">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground">Scenario</span>
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          title="Hide scenario"
-          aria-label="Hide scenario"
-        >
-          ◀
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto px-4 py-4">
-        <h2 className="text-base text-foreground mb-3">{challenge?.name ?? '...'}</h2>
-        <ScenarioBody text={challenge?.scenario ?? ''} />
+    <div className="h-full overflow-auto bg-background">
+      <div className="max-w-[1440px] mx-auto px-4 md:px-8 py-8">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_420px] gap-6">
+          <section className="min-w-0 border border-border/80 rounded-lg bg-card/40 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div className="px-5 py-3 border-b border-border/80 bg-background/30 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Challenge Overview
+                </p>
+                <h2 className="text-xl md:text-2xl text-foreground mt-1">
+                  {challenge?.name ?? 'Loading challenge...'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenWorkspace}
+                disabled={opening || !challenge}
+                className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {opening ? 'Opening…' : 'Open Code + Browser'}
+              </button>
+            </div>
 
-        {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
-          <details className="mt-4 border-t border-border pt-3">
-            <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground">
-              Static hints ({challenge.hint_tiers.length})
-            </summary>
-            <ol className="mt-3 space-y-3 list-decimal list-inside text-foreground/80 text-sm">
-              {challenge.hint_tiers.map((h) => (
-                <li key={h.tier}>{h.text}</li>
-              ))}
-            </ol>
-          </details>
-        )}
+            <div className="px-5 py-5 space-y-6">
+              {error && (
+                <div className="text-sm text-red-400 border border-red-400/30 bg-red-400/5 rounded px-3 py-2">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <InfoChip label="Track" value={challenge?.track ?? '—'} />
+                <InfoChip label="Difficulty" value={challenge?.difficulty ?? '—'} />
+                <InfoChip label="Category" value={challenge?.category ?? '—'} />
+                <InfoChip
+                  label="Estimate"
+                  value={challenge ? `~${challenge.estimated_minutes}m` : '—'}
+                />
+              </div>
+
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                  Scenario
+                </p>
+                <ScenarioBody text={challenge?.scenario ?? ''} />
+              </div>
+
+              {challenge?.hint_tiers && challenge.hint_tiers.length > 0 && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                    Hints
+                  </p>
+                  <div className="space-y-3">
+                    {challenge.hint_tiers.map((hintTier) => (
+                      <details
+                        key={hintTier.tier}
+                    className="border border-border/70 rounded bg-background/75 overflow-hidden group"
+                      >
+                        <summary className="list-none cursor-pointer px-3 py-3 flex items-center justify-between gap-3">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
+                            Hint {hintTier.tier}
+                          </span>
+                          <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
+                            ▾
+                          </span>
+                        </summary>
+                        <div className="px-3 pb-3 border-t border-border">
+                          <p className="text-sm text-foreground/80 pt-3">{hintTier.text}</p>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <aside className="min-w-0 space-y-4">
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
+                  Progress
+                </p>
+              </div>
+              <div className="px-4 py-4 grid grid-cols-2 gap-3">
+                <ProgressTile
+                  label="Reading Summary"
+                  value={progress?.summary_passed ? 'Passed' : 'Pending'}
+                />
+                <ProgressTile label="Attack" value={progress?.attack_captured ? 'Captured' : 'Pending'} />
+                <ProgressTile label="Defend" value={progress?.defend_passed ? 'Passed' : 'Pending'} />
+                <ProgressTile label="Attempts" value={String(progress?.attempt_count ?? 0)} />
+              </div>
+              <div className="px-4 pb-4 text-xs text-muted-foreground space-y-1">
+                <p>
+                  Reading Summary tracks whether you passed the short comprehension check for
+                  this challenge before diving into attack or defense.
+                </p>
+                {progress ? (
+                  <>
+                  <p>Total score awarded here: {displayScore}</p>
+                  <p>
+                    Last activity:{' '}
+                    {progress.last_submission_at
+                      ? new Date(progress.last_submission_at).toLocaleString()
+                      : 'No submissions yet'}
+                  </p>
+                  </>
+                ) : (
+                  <p>No submissions yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
+                  Submission History
+                </p>
+                <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/80 font-semibold">
+                  {recentSubmissions.length} recent
+                </span>
+              </div>
+              <div className="max-h-[280px] overflow-auto divide-y divide-border">
+                {recentSubmissions.length > 0 ? (
+                  recentSubmissions.map((submission, index) => (
+                    <SubmissionRow key={`${submission.created_at}-${index}`} submission={submission} />
+                  ))
+                ) : (
+                  <EmptyState text="No submission history for this challenge yet." />
+                )}
+              </div>
+            </section>
+
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
+                  Recent Payloads
+                </p>
+                <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/80 font-semibold">
+                  {payloads.length} captured
+                </span>
+              </div>
+              <div className="max-h-[240px] overflow-auto divide-y divide-border">
+                {payloads.length > 0 ? (
+                  payloads.map((payload, index) => (
+                    <PayloadRow key={`${payload.timestamp}-${index}`} payload={payload} />
+                  ))
+                ) : (
+                  <EmptyState text="No recorded attack attempts yet." />
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
       </div>
-    </aside>
+    </div>
   );
+}
+
+function InfoChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">{label}</p>
+      <p className="text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ProgressTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold mb-1">{label}</p>
+      <p className="text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
+  return (
+    <div className="px-4 py-3 bg-background/55">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
+          {submission.phase}
+        </p>
+        <span
+          className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${
+            submission.result?.status === 'passed'
+              ? 'text-green-400 border-green-400/30 bg-green-400/5'
+              : submission.result?.status === 'failed'
+              ? 'text-red-400 border-red-400/30 bg-red-400/5'
+              : 'text-yellow-400 border-yellow-400/30 bg-yellow-400/5'
+          }`}
+        >
+          {submission.result?.status ?? 'pending'}
+        </span>
+      </div>
+      <p className="text-sm text-foreground mt-2">
+        {submission.result?.message || `Submitted ${submission.submission_type}.`}
+      </p>
+      <p className="text-xs text-muted-foreground mt-2">
+        {new Date(submission.created_at).toLocaleString()}
+        {submission.score_awarded ? ` • +${submission.score_awarded} pts` : ''}
+      </p>
+    </div>
+  );
+}
+
+function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
+  const fields = Object.entries(payload.form_data || {});
+  const statusClass =
+    payload.response_status >= 400
+      ? 'text-red-400 border-red-400/30 bg-red-400/5'
+      : payload.response_status >= 300
+      ? 'text-sky-400 border-sky-400/30 bg-sky-400/5'
+      : 'text-green-400 border-green-400/30 bg-green-400/5';
+
+  return (
+    <div className="px-4 py-3 bg-background/55">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
+          {payload.method} /{payload.path}
+        </p>
+        <span className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${statusClass}`}>
+          {payload.response_status}
+        </span>
+      </div>
+      {fields.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {fields.map(([key, value]) => (
+            <p key={key} className="text-xs text-foreground/80 font-mono break-all">
+              <span className="text-muted-foreground">{key}=</span>
+              {value}
+            </p>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground mt-2">
+        {new Date(payload.timestamp).toLocaleString()}
+      </p>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="px-4 py-6 text-sm text-muted-foreground">{text}</div>;
 }
 
 interface UserMenuProps {

@@ -9,6 +9,7 @@ Flow:
 """
 
 import re
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -32,6 +33,22 @@ router = APIRouter(prefix="/api/attack", tags=["attack"])
 
 class FlagSubmitRequest(BaseModel):
     flag: str
+
+
+def _payload_to_response(payload) -> dict:
+    timestamp = payload.timestamp
+    if isinstance(timestamp, (int, float)):
+        timestamp = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+    elif hasattr(timestamp, "isoformat"):
+        timestamp = timestamp.isoformat()
+
+    return {
+        "path": payload.path,
+        "method": payload.method,
+        "form_data": payload.form_data,
+        "response_status": payload.response_status,
+        "timestamp": timestamp,
+    }
 
 
 @router.post("/{challenge_id}/start")
@@ -202,21 +219,39 @@ async def request_attack_hint(
 async def get_payload_history(
     challenge_id: str, user: dict = Depends(require_session)
 ):
-    """Return the user's attempted payloads for this attack session."""
+    """Return the user's attempted payloads, including persisted history."""
+    if is_db_connected():
+        db = get_db()
+        docs = await db.attack_payloads.find(
+            {"user_id": user["session_id"], "challenge_id": challenge_id}
+        ).sort("timestamp", -1).to_list(length=50)
+        payloads = []
+        for doc in docs:
+            doc.pop("_id", None)
+            payloads.append(
+                {
+                    "path": doc["path"],
+                    "method": doc["method"],
+                    "form_data": doc.get("form_data", {}),
+                    "response_status": doc["response_status"],
+                    "timestamp": (
+                        doc["timestamp"].isoformat()
+                        if hasattr(doc.get("timestamp"), "isoformat")
+                        else doc.get("timestamp")
+                    ),
+                }
+            )
+        return {
+            "challenge_id": challenge_id,
+            "count": len(payloads),
+            "payloads": payloads,
+        }
+
     payloads = get_payloads(user["session_id"], challenge_id)
     return {
         "challenge_id": challenge_id,
         "count": len(payloads),
-        "payloads": [
-            {
-                "path": p.path,
-                "method": p.method,
-                "form_data": p.form_data,
-                "response_status": p.response_status,
-                "timestamp": p.timestamp,
-            }
-            for p in payloads
-        ],
+        "payloads": [_payload_to_response(p) for p in payloads],
     }
 
 
@@ -274,6 +309,18 @@ async def proxy_to_container(
                 user["session_id"], challenge_id, path, request.method,
                 form_data, resp.status_code,
             )
+            if is_db_connected():
+                await get_db().attack_payloads.insert_one(
+                    {
+                        "user_id": user["session_id"],
+                        "challenge_id": challenge_id,
+                        "path": path,
+                        "method": request.method,
+                        "form_data": form_data,
+                        "response_status": resp.status_code,
+                        "timestamp": datetime.now(timezone.utc),
+                    }
+                )
 
     excluded_headers = {"transfer-encoding", "content-encoding", "content-length"}
     response_headers = {

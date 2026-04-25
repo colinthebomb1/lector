@@ -46,6 +46,53 @@ export interface AttackHint {
   attempts_analyzed: number;
 }
 
+export interface AttackPayloadRecord {
+  path: string;
+  method: string;
+  form_data: Record<string, string>;
+  response_status: number;
+  timestamp: string;
+}
+
+export interface AttackPayloadHistory {
+  challenge_id: string;
+  count: number;
+  payloads: AttackPayloadRecord[];
+}
+
+export interface SubmissionRecord {
+  challenge_id: string;
+  submission_type: 'summary' | 'flag' | 'patch' | 'annotation';
+  phase: 'read' | 'attack' | 'defend' | 'review';
+  payload: Record<string, unknown>;
+  result: {
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
+    message?: string;
+    functional_passed?: boolean | null;
+    track_test_passed?: boolean | null;
+    output?: string;
+    elapsed_seconds?: number;
+  } | null;
+  score_awarded?: number;
+  created_at: string;
+}
+
+export interface SubmissionHistoryProgress {
+  summary_passed: boolean;
+  attack_captured: boolean;
+  defend_passed: boolean;
+  review_fixed: boolean;
+  attempt_count: number;
+  total_score_awarded: number;
+  last_submission_at: string | null;
+}
+
+export interface SubmissionHistory {
+  challenge_id: string;
+  submissions: SubmissionRecord[];
+  progress: SubmissionHistoryProgress;
+}
+
 export interface CurrentUser {
   authenticated: boolean;
   nickname?: string;
@@ -103,6 +150,10 @@ export const api = {
     request<AttackHint>(`/api/attack/${encodeURIComponent(id)}/hint`, {
       method: 'POST',
     }),
+  attackPayloads: (id: string) =>
+    request<AttackPayloadHistory>(`/api/attack/${encodeURIComponent(id)}/payloads`),
+  submissionHistory: (id: string) =>
+    request<SubmissionHistory>(`/api/submissions/history/${encodeURIComponent(id)}`),
   proxyUrl: (id: string, path = '') =>
     `${API_BASE}/api/attack/${encodeURIComponent(id)}/proxy/${path.replace(/^\//, '')}`,
 };
