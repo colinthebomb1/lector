@@ -194,9 +194,10 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
               type="button"
               onClick={() => setIframeKey((k) => k + 1)}
               disabled={status.kind !== 'ready'}
-              className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="text-xs uppercase tracking-wider px-3 py-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              style={{ backgroundColor: '#0ea5e9', color: '#082f49' }}
             >
-              Reset
+              Reload
             </button>
           </div>
         </div>
