@@ -1,12 +1,91 @@
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { BlinkingCursor } from './BlinkingCursor';
 
 interface AuthProps {
   onBackToHome?: () => void;
+  onAuthenticated?: (user: { nickname: string; email: string | null }) => void;
 }
 
-export function Auth({ onBackToHome }: AuthProps) {
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
+  'http://localhost:8000';
+
+export function Auth({ onBackToHome, onAuthenticated }: AuthProps) {
   const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const switchMode = (login: boolean) => {
+    setIsLogin(login);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!email.trim() || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+    if (!isLogin && !name.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (!isLogin && password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
+    const payload = isLogin
+      ? { email: email.trim(), password }
+      : { name: name.trim(), email: email.trim(), password };
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const detail =
+          (typeof data?.detail === 'string' && data.detail) ||
+          (Array.isArray(data?.detail) && data.detail[0]?.msg) ||
+          (response.status === 409
+            ? 'An account with that email already exists.'
+            : response.status === 401
+              ? 'Invalid email or password.'
+              : 'Something went wrong. Please try again.');
+        setError(detail);
+        return;
+      }
+
+      setSuccess(
+        isLogin
+          ? `Welcome back, ${data.nickname ?? 'reader'}.`
+          : `Account created for ${data.email ?? email.trim()}.`,
+      );
+      setPassword('');
+      onAuthenticated?.({ nickname: data.nickname, email: data.email ?? null });
+    } catch (err) {
+      setError('Could not reach the server. Is the backend running?');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-4 relative overflow-hidden">
@@ -30,7 +109,8 @@ export function Auth({ onBackToHome }: AuthProps) {
         <div className="bg-card border border-border rounded p-8">
           <div className="flex gap-4 mb-8 border-b border-border">
             <button
-              onClick={() => setIsLogin(true)}
+              type="button"
+              onClick={() => switchMode(true)}
               className={`pb-3 px-1 transition-colors relative ${
                 isLogin ? 'text-foreground' : 'text-muted-foreground'
               }`}
@@ -39,7 +119,8 @@ export function Auth({ onBackToHome }: AuthProps) {
               {isLogin && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>}
             </button>
             <button
-              onClick={() => setIsLogin(false)}
+              type="button"
+              onClick={() => switchMode(false)}
               className={`pb-3 px-1 transition-colors relative ${
                 !isLogin ? 'text-foreground' : 'text-muted-foreground'
               }`}
@@ -49,7 +130,7 @@ export function Auth({ onBackToHome }: AuthProps) {
             </button>
           </div>
 
-          <form className="space-y-6">
+          <form className="space-y-6" onSubmit={handleSubmit}>
             {!isLogin && (
               <div>
                 <label htmlFor="name" className="block text-sm mb-2 text-foreground/80">
@@ -58,6 +139,9 @@ export function Auth({ onBackToHome }: AuthProps) {
                 <input
                   type="text"
                   id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
                   className="w-full bg-background border border-border rounded px-4 py-3 text-foreground focus:outline-none focus:border-accent transition-colors"
                   placeholder="your_name"
                 />
@@ -71,6 +155,9 @@ export function Auth({ onBackToHome }: AuthProps) {
               <input
                 type="email"
                 id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
                 className="w-full bg-background border border-border rounded px-4 py-3 text-foreground focus:outline-none focus:border-accent transition-colors"
                 placeholder="user@example.com"
               />
@@ -83,6 +170,10 @@ export function Auth({ onBackToHome }: AuthProps) {
               <input
                 type="password"
                 id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
+                minLength={isLogin ? undefined : 8}
                 className="w-full bg-background border border-border rounded px-4 py-3 text-foreground focus:outline-none focus:border-accent transition-colors"
                 placeholder="••••••••"
               />
@@ -103,11 +194,29 @@ export function Auth({ onBackToHome }: AuthProps) {
               </div>
             )}
 
+            {error && (
+              <div className="text-sm text-red-400 border border-red-400/30 bg-red-400/5 rounded px-3 py-2">
+                {error}
+              </div>
+            )}
+            {success && !error && (
+              <div className="text-sm text-accent border border-accent/30 bg-accent/5 rounded px-3 py-2">
+                {success}
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full bg-accent text-accent-foreground py-3 rounded hover:bg-accent/90 transition-all hover:scale-105"
+              disabled={submitting}
+              className="w-full bg-accent text-accent-foreground py-3 rounded hover:bg-accent/90 transition-all hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              {isLogin ? 'Login →' : 'Create Account →'}
+              {submitting
+                ? isLogin
+                  ? 'Logging in...'
+                  : 'Creating account...'
+                : isLogin
+                  ? 'Login →'
+                  : 'Create Account →'}
             </button>
           </form>
 
@@ -118,13 +227,19 @@ export function Auth({ onBackToHome }: AuthProps) {
           </div>
 
           <div className="space-y-3">
-            <button className="w-full bg-background border border-border py-3 rounded hover:bg-foreground/5 transition-colors flex items-center justify-center gap-2">
+            <button
+              type="button"
+              className="w-full bg-background border border-border py-3 rounded hover:bg-foreground/5 transition-colors flex items-center justify-center gap-2"
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
               </svg>
               Continue with GitHub
             </button>
-            <button className="w-full bg-background border border-border py-3 rounded hover:bg-foreground/5 transition-colors flex items-center justify-center gap-2">
+            <button
+              type="button"
+              className="w-full bg-background border border-border py-3 rounded hover:bg-foreground/5 transition-colors flex items-center justify-center gap-2"
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
