@@ -100,6 +100,7 @@ async def submit_annotations(
         raise HTTPException(status_code=404, detail="Challenge not found")
 
     results = {"annotations_accepted": True}
+    grade_result = None
 
     if body.fix_patch:
         grade_result = await grade_submission(challenge, body.fix_patch)
@@ -110,6 +111,7 @@ async def submit_annotations(
         challenge_id=body.challenge_id,
         submission_type=SubmissionType.ANNOTATION,
         payload=body.model_dump(),
+        result=grade_result,
     )
     db = get_db()
     await db.submissions.insert_one(submission.model_dump())
