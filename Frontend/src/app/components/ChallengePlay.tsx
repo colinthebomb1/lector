@@ -50,6 +50,7 @@ export function ChallengePlay({
   const [dragging, setDragging] = useState(false);
   const [history, setHistory] = useState<SubmissionHistory | null>(null);
   const [payloads, setPayloads] = useState<AttackPayloadRecord[]>([]);
+  const [showCaptureModal, setShowCaptureModal] = useState(false);
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
@@ -138,7 +139,10 @@ export function ChallengePlay({
       const result = await api.submitFlag(challengeId, flag.trim());
       setFlagFeedback({ ok: result.accepted, message: result.message });
       await refreshOverviewData();
-      if (result.accepted) onCompleted();
+      if (result.accepted) {
+        onCompleted();
+        setShowCaptureModal(true);
+      }
     } catch (err) {
       setFlagFeedback({
         ok: false,
@@ -189,6 +193,27 @@ export function ChallengePlay({
   }, [dragging]);
 
   const handleDoubleClickDivider = useCallback(() => setSplitPercent(45), []);
+
+  const handleContinueToDefend = useCallback(async () => {
+    setShowCaptureModal(false);
+    try {
+      await refreshOverviewData();
+    } catch {
+      // Best-effort refresh; still surface the overview where defend lives.
+    }
+    await stopSession();
+    stoppedRef.current = false;
+    setFlag('');
+    setHint(null);
+    setFlagFeedback(null);
+    setProxyUrl(null);
+    setStatus({ kind: 'overview' });
+  }, [refreshOverviewData, stopSession]);
+
+  const handleBackToDashboardFromModal = useCallback(async () => {
+    setShowCaptureModal(false);
+    await handleExit();
+  }, [handleExit]);
 
   const codeFileNames = useMemo(
     () => (challenge ? Object.keys(challenge.code_files) : []),
@@ -438,6 +463,96 @@ export function ChallengePlay({
           />
         )}
       </main>
+
+      {showCaptureModal && (
+        <CaptureSuccessModal
+          challengeName={challenge?.name ?? 'this challenge'}
+          hasDefendPhase={challenge?.has_defend_phase ?? false}
+          onContinueToDefend={() => void handleContinueToDefend()}
+          onBackToDashboard={() => void handleBackToDashboardFromModal()}
+          onDismiss={() => setShowCaptureModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface CaptureSuccessModalProps {
+  challengeName: string;
+  hasDefendPhase: boolean;
+  onContinueToDefend: () => void;
+  onBackToDashboard: () => void;
+  onDismiss: () => void;
+}
+
+function CaptureSuccessModal({
+  challengeName,
+  hasDefendPhase,
+  onContinueToDefend,
+  onBackToDashboard,
+  onDismiss,
+}: CaptureSuccessModalProps) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="capture-success-title"
+      className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+    >
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={onDismiss}
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm cursor-default"
+      />
+      <div className="relative w-full max-w-md border border-green-400/40 rounded-lg bg-card shadow-[0_0_60px_-15px_rgba(74,222,128,0.45)] overflow-hidden animate-fadeInUp">
+        <div className="px-6 pt-6 pb-4 border-b border-border/70 bg-green-400/5">
+          <p className="text-[10px] uppercase tracking-[0.25em] text-green-400 font-semibold">
+            Flag captured
+          </p>
+          <h3
+            id="capture-success-title"
+            className="text-xl text-foreground mt-2"
+          >
+            Attack complete — nice work.
+          </h3>
+          <p className="text-sm text-muted-foreground mt-2">
+            You exploited <span className="text-foreground">{challengeName}</span>{' '}
+            and pulled the flag. Want to keep going and patch the vulnerability,
+            or head back to the dashboard?
+          </p>
+        </div>
+        <div className="px-6 py-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            onClick={onBackToDashboard}
+            className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent transition-colors"
+          >
+            Back to Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={onContinueToDefend}
+            disabled={!hasDefendPhase}
+            title={
+              hasDefendPhase
+                ? 'Move on to defending this challenge'
+                : 'This challenge has no defend phase'
+            }
+            className="px-4 py-2 text-xs uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {hasDefendPhase ? 'Continue to Defend →' : 'No Defend Phase'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
