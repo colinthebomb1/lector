@@ -8,15 +8,6 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-4 md:gap-8">
-          <a href="#learn" className="hidden md:inline text-foreground/60 hover:text-foreground transition-colors">
-            Learn
-          </a>
-          <a href="#examples" className="hidden md:inline text-foreground/60 hover:text-foreground transition-colors">
-            Examples
-          </a>
-          <a href="#pricing" className="hidden md:inline text-foreground/60 hover:text-foreground transition-colors">
-            Pricing
-          </a>
           <button className="px-4 md:px-6 py-2 text-sm md:text-base border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-all">
             Start Reading →
           </button>
