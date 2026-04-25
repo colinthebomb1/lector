@@ -161,37 +161,46 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
 
         <div className="space-y-2">
           {filtered.map((c) => {
-            const done = completed.has(c.id);
+            const done = completed.has(c.id) || completed.has(`${c.id}:attack`);
             return (
-              <button
+              <div
                 key={c.id}
-                type="button"
-                onClick={() => onSelectChallenge?.(c)}
-                className="w-full text-left border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors"
+                className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors"
               >
                 <span className="col-span-2 md:col-span-1 font-mono text-xs text-muted-foreground">
                   {c.id}
                 </span>
-                <span className="col-span-6 md:col-span-6 flex items-center gap-2">
-                  <span className="text-foreground">{c.name}</span>
+                <span className="col-span-10 md:col-span-5 flex items-center gap-2 min-w-0">
+                  <span className="text-foreground truncate">{c.name}</span>
                   {done && (
-                    <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5">
+                    <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
                       done
                     </span>
                   )}
                 </span>
-                <span className="col-span-2 text-xs text-muted-foreground">{c.category}</span>
-                <span className="col-span-2 md:col-span-1 justify-self-end">
+                <span className="col-span-4 md:col-span-2 text-xs text-muted-foreground">
+                  {c.category}
+                </span>
+                <span className="col-span-3 md:col-span-1 justify-self-start md:justify-self-end">
                   <span
                     className={`text-[10px] uppercase tracking-wider border rounded px-2 py-1 ${DIFFICULTY_TONE[c.difficulty]}`}
                   >
                     {c.difficulty}
                   </span>
                 </span>
-                <span className="hidden md:inline col-span-2 text-xs text-muted-foreground justify-self-end">
-                  ~{c.estimated_minutes} min
+                <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
+                  ~{c.estimated_minutes}m
                 </span>
-              </button>
+                <div className="col-span-5 md:col-span-2 justify-self-end">
+                  <button
+                    type="button"
+                    onClick={() => onSelectChallenge?.(c)}
+                    className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors"
+                  >
+                    {done ? 'Replay →' : 'Start →'}
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>

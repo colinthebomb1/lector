@@ -8,6 +8,8 @@ Flow:
 4. POST /api/attack/{challenge_id}/stop   → tear down the container
 """
 
+import re
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -246,15 +248,36 @@ async def proxy_to_container(
 
     if resp.status_code in (301, 302, 303, 307, 308):
         location = resp.headers.get("location", "")
-        if location.startswith("/"):
+        if location.startswith("/") and not location.startswith("//"):
             location = f"/api/attack/{challenge_id}/proxy{location}"
         response_headers["location"] = location
 
+    content = resp.content
+    content_type = resp.headers.get("content-type", "")
+    if "text/html" in content_type.lower():
+        content = _rewrite_html_urls(content, challenge_id)
+
     return Response(
-        content=resp.content,
+        content=content,
         status_code=resp.status_code,
         headers=response_headers,
     )
+
+
+_URL_ATTR_RE = re.compile(
+    rb'(?P<attr>action|href|src|formaction)\s*=\s*(?P<quote>["\'])/(?!/)',
+    flags=re.IGNORECASE,
+)
+
+
+def _rewrite_html_urls(body: bytes, challenge_id: str) -> bytes:
+    """Rewrite root-relative URLs in HTML so an iframe stays inside the proxy.
+
+    Form actions like `/login` would otherwise navigate the iframe to the
+    backend root and bypass the attack proxy entirely.
+    """
+    prefix = f"/api/attack/{challenge_id}/proxy".encode()
+    return _URL_ATTR_RE.sub(rb"\g<attr>=\g<quote>" + prefix + b"/", body)
 
 
 @router.api_route("/{challenge_id}/proxy", methods=["GET", "POST"])
