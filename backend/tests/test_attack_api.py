@@ -282,9 +282,60 @@ def test_proxy_persists_payload_attempts_when_database_is_connected(client, monk
     assert stored["response_status"] == 302
 
 
+def test_proxy_persists_get_query_attempts_when_database_is_connected(client, monkeypatch):
+    fake_db = FakeDatabase()
+    fake_http = FakeAsyncClient(FakeProxyResponse(status_code=200, text="FLAG{demo}", headers={"content-type": "text/plain"}))
+
+    monkeypatch.setattr(
+        attack,
+        "get_attack_session",
+        lambda user_id, challenge_id: SimpleNamespace(port=5005),
+    )
+    monkeypatch.setattr(attack.httpx, "AsyncClient", lambda **kwargs: fake_http)
+    monkeypatch.setattr(attack, "is_db_connected", lambda: True)
+    monkeypatch.setattr(attack, "get_db", lambda: fake_db)
+    recorded = []
+    monkeypatch.setattr(
+        attack,
+        "record_payload",
+        lambda user_id, challenge_id, path, method, form_data, response_status: recorded.append(
+            (user_id, challenge_id, path, method, form_data, response_status)
+        ),
+    )
+
+    response = client.get(
+        "/api/attack/path-traversal-log-export/proxy/export",
+        params={"file": "../../secrets/super-secret/flag.txt"},
+    )
+
+    assert response.status_code == 200
+    assert recorded[0] == (
+        "user-1",
+        "path-traversal-log-export",
+        "export",
+        "GET",
+        {"file": "../../secrets/super-secret/flag.txt"},
+        200,
+    )
+    assert len(fake_db.attack_payloads.inserted) == 1
+    stored = fake_db.attack_payloads.inserted[0]
+    assert stored["path"] == "export"
+    assert stored["method"] == "GET"
+    assert stored["form_data"]["file"] == "../../secrets/super-secret/flag.txt"
+
+
 def test_payload_history_returns_persisted_attempts_after_session_is_gone(client, monkeypatch):
     fake_db = FakeDatabase()
     fake_db.attack_payloads.inserted = [
+        {
+            "user_id": "user-1",
+            "challenge_id": "sqli-login-bypass",
+            "path": "login",
+            "method": "POST",
+            "form_data": {"username": "admin", "password": "x"},
+            "response_status": 200,
+            "timestamp": datetime(2026, 4, 25, 11, 59, 0, tzinfo=timezone.utc),
+        },
         {
             "user_id": "user-1",
             "challenge_id": "sqli-login-bypass",
@@ -302,9 +353,10 @@ def test_payload_history_returns_persisted_attempts_after_session_is_gone(client
 
     assert response.status_code == 200
     body = response.json()
-    assert body["count"] == 1
-    assert body["payloads"][0]["form_data"]["username"] == "' OR '1'='1' -- "
-    assert body["payloads"][0]["timestamp"].startswith("2026-04-25T12:00:00")
+    assert body["count"] == 2
+    assert body["payloads"][0]["form_data"]["username"] == "admin"
+    assert body["payloads"][1]["form_data"]["username"] == "' OR '1'='1' -- "
+    assert body["payloads"][1]["timestamp"].startswith("2026-04-25T12:00:00")
 
 
 def test_stop_attack_returns_not_found_without_session(client, monkeypatch):

@@ -228,7 +228,7 @@ async def get_payload_history(
         db = get_db()
         docs = await db.attack_payloads.find(
             {"user_id": user["session_id"], "challenge_id": challenge_id}
-        ).sort("timestamp", -1).to_list(length=50)
+        ).sort("timestamp", 1).to_list(length=50)
         payloads = []
         for doc in docs:
             doc.pop("_id", None)
@@ -295,36 +295,24 @@ async def proxy_to_container(
         except httpx.ConnectError:
             raise HTTPException(status_code=502, detail="Container app not responding")
 
-    if request.method == "POST" and body:
-        content_type = request.headers.get("content-type", "")
-        form_data: dict[str, str] = {}
-        if "application/x-www-form-urlencoded" in content_type:
-            from urllib.parse import parse_qs
-            for k, v in parse_qs(body.decode("utf-8", errors="replace")).items():
-                form_data[k] = v[0] if v else ""
-        elif "application/json" in content_type:
-            import json
-            try:
-                form_data = json.loads(body)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
-        if form_data:
-            record_payload(
-                user["session_id"], challenge_id, path, request.method,
-                form_data, resp.status_code,
+    form_data = _extract_payload_fields(request, body)
+    if form_data:
+        record_payload(
+            user["session_id"], challenge_id, path, request.method,
+            form_data, resp.status_code,
+        )
+        if is_db_connected():
+            await get_db().attack_payloads.insert_one(
+                {
+                    "user_id": user["session_id"],
+                    "challenge_id": challenge_id,
+                    "path": path,
+                    "method": request.method,
+                    "form_data": form_data,
+                    "response_status": resp.status_code,
+                    "timestamp": datetime.now(timezone.utc),
+                }
             )
-            if is_db_connected():
-                await get_db().attack_payloads.insert_one(
-                    {
-                        "user_id": user["session_id"],
-                        "challenge_id": challenge_id,
-                        "path": path,
-                        "method": request.method,
-                        "form_data": form_data,
-                        "response_status": resp.status_code,
-                        "timestamp": datetime.now(timezone.utc),
-                    }
-                )
 
     excluded_headers = {"transfer-encoding", "content-encoding", "content-length"}
     response_headers = {
@@ -350,6 +338,33 @@ async def proxy_to_container(
     )
 
 
+def _extract_payload_fields(request: Request, body: bytes) -> dict[str, str]:
+    """Extract user-controlled request fields worth showing as attack attempts."""
+    form_data: dict[str, str] = {}
+
+    for key, value in request.query_params.multi_items():
+        if key not in form_data:
+            form_data[key] = value
+
+    if request.method == "POST" and body:
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            from urllib.parse import parse_qs
+            for key, values in parse_qs(body.decode("utf-8", errors="replace")).items():
+                form_data[key] = values[0] if values else ""
+        elif "application/json" in content_type:
+            import json
+            try:
+                parsed = json.loads(body)
+                if isinstance(parsed, dict):
+                    for key, value in parsed.items():
+                        form_data[str(key)] = str(value)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+    return form_data
+
+
 _URL_ATTR_RE = re.compile(
     rb'(?P<attr>action|href|src|formaction)\s*=\s*(?P<quote>["\'])/(?!/)',
     flags=re.IGNORECASE,
@@ -363,7 +378,61 @@ def _rewrite_html_urls(body: bytes, challenge_id: str) -> bytes:
     backend root and bypass the attack proxy entirely.
     """
     prefix = f"/api/attack/{challenge_id}/proxy".encode()
-    return _URL_ATTR_RE.sub(rb"\g<attr>=\g<quote>" + prefix + b"/", body)
+    rewritten = _URL_ATTR_RE.sub(rb"\g<attr>=\g<quote>" + prefix + b"/", body)
+    return _inject_navigation_bridge(rewritten, challenge_id)
+
+
+def _inject_navigation_bridge(body: bytes, challenge_id: str) -> bytes:
+    """Inject a tiny same-origin bridge so the parent UI can track iframe paths."""
+    script = f"""
+<script>
+(function () {{
+  var challengeId = {challenge_id!r};
+  var proxyPrefix = "/api/attack/" + encodeURIComponent(challengeId) + "/proxy";
+
+  function targetPathFromUrl(url) {{
+    try {{
+      var parsed = new URL(url, window.location.href);
+      var path = parsed.pathname;
+      if (path.indexOf(proxyPrefix) === 0) {{
+        path = path.slice(proxyPrefix.length) || "/";
+      }}
+      return path + parsed.search + parsed.hash;
+    }} catch (error) {{
+      return "/";
+    }}
+  }}
+
+  function post(type, path) {{
+    window.parent.postMessage({{
+      type: type,
+      challengeId: challengeId,
+      path: path
+    }}, "*");
+  }}
+
+  post("lector-target-location", targetPathFromUrl(window.location.href));
+
+  document.addEventListener("click", function (event) {{
+    var link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
+    if (!link) return;
+    post("lector-target-click", targetPathFromUrl(link.href));
+  }}, true);
+
+  document.addEventListener("submit", function (event) {{
+    var form = event.target;
+    if (!form || !form.action) return;
+    post("lector-target-submit", targetPathFromUrl(form.action));
+  }}, true);
+}})();
+</script>
+""".encode()
+
+    lower = body.lower()
+    marker = lower.rfind(b"</body>")
+    if marker == -1:
+        return body + script
+    return body[:marker] + script + body[marker:]
 
 
 @router.api_route("/{challenge_id}/proxy", methods=["GET", "POST"])
