@@ -9,7 +9,12 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
 
   if (showAuth) {
-    return <Auth onBackToHome={() => setShowAuth(false)} />;
+    return (
+      <Auth
+        onBackToHome={() => setShowAuth(false)}
+        onAuthenticated={() => setShowAuth(false)}
+      />
+    );
   }
 
   return (

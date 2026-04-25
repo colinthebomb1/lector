@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     session_secret: str = "change-me-in-production"
     session_max_age: int = 86400  # 24 hours
+    google_client_id: str = ""
 
     challenges_dir: str = "challenges"
 

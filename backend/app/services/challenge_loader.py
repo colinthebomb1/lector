@@ -1,10 +1,12 @@
 import json
+import logging
 from pathlib import Path
 
 from app.config import get_settings
 from app.models import Challenge, ChallengeMetadata
 
 _challenges: dict[str, Challenge] = {}
+logger = logging.getLogger(__name__)
 
 
 def load_challenges() -> dict[str, Challenge]:
@@ -40,16 +42,16 @@ def load_challenges() -> dict[str, Challenge]:
             code_dir = challenge_dir / "code"
             if code_dir.exists():
                 for f in code_dir.rglob("*"):
-                    if f.is_file() and f.suffix not in (".db", ".sqlite", ".sqlite3", ".pyc", ".so", ".o"):
+                    if f.is_file():
                         try:
-                            code_files[str(f.relative_to(code_dir))] = f.read_text()
+                            code_files[str(f.relative_to(code_dir))] = f.read_text(encoding="utf-8")
                         except UnicodeDecodeError:
-                            continue
+                            logger.warning("Skipping non-text challenge file: %s", f)
 
             ref_summary = ""
             ref_path = challenge_dir / "solution" / "reference.md"
             if ref_path.exists():
-                ref_summary = ref_path.read_text()
+                ref_summary = ref_path.read_text(encoding="utf-8")
 
             dockerfile = ""
             df_path = challenge_dir / "Dockerfile"
