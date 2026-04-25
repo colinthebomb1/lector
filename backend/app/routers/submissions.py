@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
 from app.models import (
     PatchSubmission,
-    FlagSubmission,
     SummarySubmission,
     AnnotationSubmission,
     Submission,
@@ -47,16 +46,6 @@ async def submit_summary(body: SummarySubmission, user: dict = Depends(require_s
         "missing_points": result.get("missing_points", []),
     }
 
-
-@router.post("/flag")
-async def submit_flag(body: FlagSubmission, user: dict = Depends(require_session)):
-    """Submit a captured flag (security track attack phase)."""
-    challenge = get_challenge(body.challenge_id)
-    if not challenge:
-        raise HTTPException(status_code=404, detail="Challenge not found")
-
-    # TODO: validate flag against expected value in challenge metadata
-    return {"accepted": True, "message": "Flag accepted"}
 
 
 @router.post("/patch")
@@ -108,6 +97,7 @@ async def submit_annotations(
         raise HTTPException(status_code=404, detail="Challenge not found")
 
     results = {"annotations_accepted": True}
+    grade_result = None
 
     if body.fix_patch:
         grade_result = await grade_submission(challenge, body.fix_patch)
@@ -118,6 +108,7 @@ async def submit_annotations(
         challenge_id=body.challenge_id,
         submission_type=SubmissionType.ANNOTATION,
         payload=body.model_dump(),
+        result=grade_result,
     )
     db = get_db()
     await db.submissions.insert_one(submission.model_dump())

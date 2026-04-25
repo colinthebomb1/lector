@@ -27,6 +27,7 @@ class ChallengeMetadata(BaseModel):
     description: str = ""
     estimated_minutes: int = 30
     hint_tiers: list[HintTier] = []
+    flag: str = ""
 
 
 class Challenge(BaseModel):

@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import connect_db, close_db, is_db_connected
 from app.services.challenge_loader import load_challenges
-from app.routers import auth, challenges, submissions, gemma, leaderboard
+from app.routers import auth, challenges, submissions, gemma, leaderboard, attack
+from app.services.attack_session import cleanup_all_sessions
 
 
 @asynccontextmanager
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     loaded = load_challenges()
     print(f"[Lector] Loaded {len(loaded)} challenges from {settings.challenges_dir}/")
     yield
+    await cleanup_all_sessions()
     await close_db()
 
 
@@ -39,6 +41,7 @@ app.include_router(challenges.router)
 app.include_router(submissions.router)
 app.include_router(gemma.router)
 app.include_router(leaderboard.router)
+app.include_router(attack.router)
 
 
 @app.get("/api/health")

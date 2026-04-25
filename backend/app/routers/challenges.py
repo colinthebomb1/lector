@@ -43,6 +43,7 @@ async def get_challenge_detail(challenge_id: str):
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
+    has_flag = bool(challenge.metadata.flag)
     return {
         "id": challenge.metadata.id,
         "name": challenge.metadata.name,
@@ -54,6 +55,8 @@ async def get_challenge_detail(challenge_id: str):
         "scenario": challenge.scenario,
         "code_files": challenge.code_files,
         "hint_tiers": [h.model_dump() for h in challenge.metadata.hint_tiers],
+        "has_attack_phase": has_flag,
+        "has_defend_phase": bool(challenge.dockerfile_path),
     }
 
 
