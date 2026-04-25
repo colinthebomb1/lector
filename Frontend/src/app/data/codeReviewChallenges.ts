@@ -54,9 +54,11 @@ const DIVISION_FACTORY_JS_SOURCE = `function createDivider(divisor) {
 
 const half = createDivider(2);
 const broken = createDivider(0);
+const stringy = createDivider("2");
 
-console.log(half("ten"));   // expected: a number, got: NaN
-console.log(broken(5));     // expected: graceful failure, got: Infinity
+console.log(half(null));
+console.log(broken(5));
+console.log(stringy([]));
 `;
 
 const DIVISION_FACTORY_PY_SOURCE = `def create_divider(divisor):
@@ -66,12 +68,10 @@ const DIVISION_FACTORY_PY_SOURCE = `def create_divider(divisor):
 
 
 half = create_divider(2)
-broken = create_divider(0)
+broken = create_divider(False)
 
-# Both factories are constructed silently. The errors only surface
-# when divide() is called, far from the original mistake.
-print(half("ten"))  # TypeError: unsupported operand type(s) for /: 'str' and 'int'
-print(broken(5))    # ZeroDivisionError: division by zero
+print(half("ten"))
+print(broken(5))
 `;
 
 const DIVISION_FACTORY_JAVA_SOURCE = `import java.util.function.DoubleUnaryOperator;
@@ -84,11 +84,11 @@ public class DividerFactory {
     public static void main(String[] args) {
         DoubleUnaryOperator half = createDivider(2.0);
         DoubleUnaryOperator broken = createDivider(0.0);
+        DoubleUnaryOperator nanDivider = createDivider(Double.NaN);
 
-        // Java does not throw on either of these; both calls silently
-        // produce NaN / Infinity rather than failing.
-        System.out.println(half.applyAsDouble(Double.NaN));   // NaN
-        System.out.println(broken.applyAsDouble(5.0));        // Infinity
+        System.out.println(half.applyAsDouble(Double.NaN));
+        System.out.println(broken.applyAsDouble(5.0));
+        System.out.println(nanDivider.applyAsDouble(10.0));
     }
 }
 `;
@@ -178,9 +178,9 @@ const CHALLENGES: CodeReviewChallenge[] = [
         original_code: DIVISION_FACTORY_JS_SOURCE,
         default_code: DIVISION_FACTORY_JS_SOURCE,
         hints: [
-          'Trace the two sample calls and focus on why JavaScript allows both of them to run without throwing.',
+          'Trace the sample calls and pay attention to JavaScript coercion rules. Several values here are accepted as operands even though they should not really count as valid inputs.',
           'There are two different validation points here: one when the divider is created, and one when it is used later.',
-          'Ask what assumptions must be true for division to produce a meaningful result. Guard those assumptions explicitly, and surface invalid input with a real error or other clear failure path.',
+          'Ask what assumptions must be true for division to produce a meaningful result in JavaScript. Guard those assumptions explicitly, and surface invalid input with a real error or other clear failure path.',
         ],
         aiHintRubric: [
           'Creation-time validation: reject divisors that should never produce a meaningful result, including zero and other non-finite values.',
@@ -237,12 +237,12 @@ const CHALLENGES: CodeReviewChallenge[] = [
         original_code: DIVISION_FACTORY_PY_SOURCE,
         default_code: DIVISION_FACTORY_PY_SOURCE,
         hints: [
-          'Trace what happens when create_divider(0) runs — it succeeds. The bad divisor is captured silently and only blows up much later, far from the call site.',
+          'Trace what happens when create_divider(False) runs. In Python, `bool` is a subclass of `int`, so a suspicious divisor can sneak through construction and only fail later.',
           'There are two validation points to consider: when the divider is built, and when it is called. Both should reject inputs that cannot produce a meaningful answer.',
-          'Make the failure explicit and close to the call site — raise a clear ValueError/TypeError instead of letting ZeroDivisionError or a low-level TypeError leak out of the closure.',
+          'Make the failure explicit and close to the call site. Raise a clear ValueError/TypeError instead of letting a low-level runtime exception leak out of the closure.',
         ],
         aiHintRubric: [
-          'Creation-time validation: reject divisors that cannot produce a meaningful result (zero, None, non-numeric).',
+          'Creation-time validation: reject divisors that cannot produce a meaningful result (zero, False, None, non-numeric).',
           'Use-time validation: reject `value` arguments that are not numeric.',
           'Failure mode: raise an explicit, intentional exception (ValueError / TypeError) instead of letting the implementation detail (ZeroDivisionError, TypeError from /) leak.',
         ],
@@ -293,11 +293,11 @@ const CHALLENGES: CodeReviewChallenge[] = [
         language: 'java',
         display_language: 'Java',
         prompt:
-          'createDivider returns a DoubleUnaryOperator that divides by the captured divisor. Both example calls silently produce NaN / Infinity instead of failing. Tighten the boundaries.',
+          'createDivider returns a DoubleUnaryOperator that divides by the captured divisor. Review how it behaves with Java floating-point edge cases and tighten the boundaries.',
         original_code: DIVISION_FACTORY_JAVA_SOURCE,
         default_code: DIVISION_FACTORY_JAVA_SOURCE,
         hints: [
-          'Java does not throw on `5.0 / 0.0` or `NaN / 2.0` — it returns Infinity/NaN. The bug is silent.',
+          'Java `double` arithmetic follows IEEE-754 rules, so values like `NaN` and division by zero often propagate silently instead of throwing.',
           'There are two validation points: when the divider is built, and when it is invoked. Reject inputs that cannot produce a meaningful answer at each one.',
           'Make the failure explicit. `Double.isFinite` and `IllegalArgumentException` (or ArithmeticException) are your friends.',
         ],
