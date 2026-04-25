@@ -80,6 +80,9 @@ export default function App() {
             setActiveChallenge(null);
             setView('dashboard');
           }}
+          onCompleted={() => {
+            void refreshUser();
+          }}
           onProfileClick={() => {
             setActiveChallenge(null);
             setView('profile');

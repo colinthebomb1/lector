@@ -53,6 +53,12 @@ export interface CodeReviewAiHint {
   progress: 'early' | 'partial' | 'near' | string;
 }
 
+export interface CodeReviewSubmissionResult {
+  passed: boolean;
+  message: string;
+  score_awarded: number;
+}
+
 export interface PatchResult {
   status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
   message?: string;
@@ -179,6 +185,17 @@ export const api = {
     prior_hints: string[];
   }) =>
     request<CodeReviewAiHint>('/api/gemma/code-review-hint', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  submitCodeReview: (payload: {
+    challenge_id: string;
+    language: string;
+    code: string;
+    passed: boolean;
+    message: string;
+  }) =>
+    request<CodeReviewSubmissionResult>('/api/submissions/code-review', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

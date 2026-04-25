@@ -8,6 +8,7 @@ class SubmissionType(str, Enum):
     FLAG = "flag"
     PATCH = "patch"
     ANNOTATION = "annotation"
+    CODE_REVIEW = "code_review"
 
 
 class SubmissionPhase(str, Enum):
@@ -61,6 +62,21 @@ class AnnotationSubmission(BaseModel):
     challenge_id: str
     annotations: list[Annotation]
     fix_patch: str = ""  # optional fix
+
+
+class CodeReviewSubmission(BaseModel):
+    """Client-graded code-review submission.
+
+    Code-review challenges are evaluated entirely on the client (the data
+    lives in the frontend bundle), so the server stores the verdict the
+    client provides and awards points on the first reported pass.
+    """
+
+    challenge_id: str
+    language: str
+    code: str
+    passed: bool
+    message: str = ""
 
 
 class Submission(BaseModel):
