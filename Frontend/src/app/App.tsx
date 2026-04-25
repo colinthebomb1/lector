@@ -75,12 +75,22 @@ export default function App() {
     return (
       <ChallengePlay
         challengeId={activeChallengeId}
+        user={user}
         onExit={() => {
           setActiveChallengeId(null);
           setView('dashboard');
         }}
         onCompleted={() => {
           void refreshUser();
+        }}
+        onProfileClick={() => {
+          setActiveChallengeId(null);
+          setView('profile');
+        }}
+        onLoggedOut={() => {
+          setActiveChallengeId(null);
+          setUser(null);
+          setView('home');
         }}
       />
     );

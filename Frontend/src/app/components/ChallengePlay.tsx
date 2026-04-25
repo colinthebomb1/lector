@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type ChallengeDetail } from '../lib/api';
+import { api, type ChallengeDetail, type CurrentUser } from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 
 interface ChallengePlayProps {
   challengeId: string;
+  user: CurrentUser;
   onExit: () => void;
   onCompleted: () => void;
+  onProfileClick: () => void;
+  onLoggedOut: () => void;
 }
 
 type Status =
@@ -17,7 +20,14 @@ type Status =
 const MIN_PANE_PERCENT = 20;
 const MAX_PANE_PERCENT = 80;
 
-export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePlayProps) {
+export function ChallengePlay({
+  challengeId,
+  user,
+  onExit,
+  onCompleted,
+  onProfileClick,
+  onLoggedOut,
+}: ChallengePlayProps) {
   const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
@@ -198,6 +208,17 @@ export function ChallengePlay({ challengeId, onExit, onCompleted }: ChallengePla
             >
               Reset
             </button>
+            <UserMenu
+              user={user}
+              onProfileClick={async () => {
+                await stopSession();
+                onProfileClick();
+              }}
+              onLoggedOut={async () => {
+                await stopSession();
+                onLoggedOut();
+              }}
+            />
           </div>
         </div>
       </header>
@@ -404,6 +425,113 @@ function ScenarioSidebar({ open, challenge, onToggle }: ScenarioSidebarProps) {
         )}
       </div>
     </aside>
+  );
+}
+
+interface UserMenuProps {
+  user: CurrentUser;
+  onProfileClick: () => void | Promise<void>;
+  onLoggedOut: () => void | Promise<void>;
+}
+
+function UserMenu({ user, onProfileClick, onLoggedOut }: UserMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const displayName = user.name ?? user.nickname ?? 'reader';
+  const initial = displayName.slice(0, 1).toUpperCase();
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', handleClick);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  const handleLogout = async () => {
+    setError(null);
+    setLoggingOut(true);
+    try {
+      await api.logout();
+      setOpen(false);
+      await onLoggedOut();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Logout failed');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const handleProfile = async () => {
+    setOpen(false);
+    await onProfileClick();
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 px-2 py-1.5 border border-border rounded text-xs hover:border-accent hover:text-accent transition-colors"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={displayName}
+      >
+        <span className="w-5 h-5 rounded-full bg-accent/10 border border-accent/40 flex items-center justify-center text-[10px] text-accent">
+          {initial}
+        </span>
+        <span className="hidden md:inline max-w-[120px] truncate">{displayName}</span>
+        <span className="text-muted-foreground text-[10px]">▾</span>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-30 w-56 bg-background border border-border rounded shadow-lg overflow-hidden"
+        >
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-sm text-foreground truncate">{displayName}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {user.email ?? 'no email'}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void handleProfile()}
+            className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-foreground/5 transition-colors"
+          >
+            Profile
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+            className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-red-400/10 hover:text-red-400 transition-colors disabled:opacity-60"
+          >
+            {loggingOut ? 'Logging out...' : 'Log out'}
+          </button>
+          {error && (
+            <p className="px-3 py-2 text-xs text-red-400 border-t border-border">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
