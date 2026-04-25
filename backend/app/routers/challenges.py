@@ -36,6 +36,13 @@ async def get_challenges(
     ]
 
 
+@router.get("/categories")
+async def get_categories():
+    """Distinct sorted list of categories across all loaded challenges."""
+    seen = sorted({c.metadata.category for c in list_challenges() if c.metadata.category})
+    return {"categories": seen}
+
+
 @router.get("/{challenge_id}")
 async def get_challenge_detail(challenge_id: str):
     """Get full challenge details including code files and scenario."""

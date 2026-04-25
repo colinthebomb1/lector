@@ -36,17 +36,21 @@ def load_challenges() -> dict[str, Challenge]:
             scenario = ""
             scenario_path = challenge_dir / "scenario.md"
             if scenario_path.exists():
-                scenario = scenario_path.read_text()
+                scenario = scenario_path.read_text(encoding="utf-8")
 
             code_files: dict[str, str] = {}
             code_dir = challenge_dir / "code"
             if code_dir.exists():
                 for f in code_dir.rglob("*"):
-                    if f.is_file():
-                        try:
-                            code_files[str(f.relative_to(code_dir))] = f.read_text(encoding="utf-8")
-                        except UnicodeDecodeError:
-                            logger.warning("Skipping non-text challenge file: %s", f)
+                    if not f.is_file():
+                        continue
+                    try:
+                        code_files[str(f.relative_to(code_dir))] = f.read_text(encoding="utf-8")
+                    except (UnicodeDecodeError, OSError):
+                        # Skip binary or unreadable files instead of failing
+                        # the whole load.
+                        logger.warning("Skipping non-text challenge file: %s", f)
+                        continue
 
             ref_summary = ""
             ref_path = challenge_dir / "solution" / "reference.md"

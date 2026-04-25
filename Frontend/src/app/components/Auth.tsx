@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { BlinkingCursor } from './BlinkingCursor';
+import { API_BASE } from '../lib/api';
 
 interface AuthProps {
   onBackToHome?: () => void;
