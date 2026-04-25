@@ -38,17 +38,17 @@ export default function App() {
             <Feature
               title="Read Code"
               description="Develop the skill to parse unfamiliar codebases quickly and build accurate mental models."
-              code={`function trace(fn) {\n  return (...args) => {\n    console.log(args);\n    return fn(...args);\n  };\n}`}
+              code={`def trace(fn):\n    def wrapped(*args, **kwargs):\n        print(f"calling {fn.__name__}", args, kwargs)\n        return fn(*args, **kwargs)\n\n    return wrapped`}
             />
             <Feature
               title="Trace Bugs"
               description="Follow execution paths, spot edge cases, and understand why code breaks before running it."
-              code={`if (user?.role === 'admin') {\n  // What if user is null?\n  // What if role is undefined?\n  return dashboard();\n}`}
+              code={`if user is not None and user.role == "admin":\n    # What if user.role is missing?\n    # What if role is None?\n    return render_dashboard()`}
             />
             <Feature
               title="Build Intuition"
               description="Move beyond syntax to understand patterns, trade-offs, and architectural decisions."
-              code={`// Why use a factory?\nconst createUser = (data) => ({\n  ...data,\n  createdAt: Date.now()\n});`}
+              code={`from datetime import datetime\n\n# Why use a factory?\ndef create_user(data):\n    return {\n        **data,\n        "created_at": datetime.utcnow(),\n    }`}
             />
           </div>
         </div>
@@ -64,7 +64,7 @@ export default function App() {
                 The Code
               </h3>
               <CodeSnippet
-                code={`async function fetchUser(id) {\n  const response = await fetch(\n    \`/api/users/\${id}\`\n  );\n  \n  if (!response.ok) {\n    throw new Error('Failed');\n  }\n  \n  return response.json();\n}`}
+                code={`async def fetch_user(user_id, client):\n    response = await client.get(f"/api/users/{user_id}")\n\n    if response.status_code != 200:\n        raise RuntimeError(f"request failed: {response.status_code}")\n\n    return response.json()`}
               />
             </div>
             <div className="flex flex-col gap-6">
@@ -81,13 +81,13 @@ export default function App() {
                 <div className="p-4 bg-background border border-border rounded hover:border-accent/50 transition-colors">
                   <p className="text-sm text-foreground/80">
                     <span className="text-accent mr-2">→</span>
-                    Why does this function need to be async?
+                    Why does this function need to be async in Python?
                   </p>
                 </div>
                 <div className="p-4 bg-background border border-border rounded hover:border-accent/50 transition-colors">
                   <p className="text-sm text-foreground/80">
                     <span className="text-accent mr-2">→</span>
-                    What error information is lost in this throw?
+                    What error information is lost in this raised exception?
                   </p>
                 </div>
               </div>
@@ -102,12 +102,6 @@ export default function App() {
           <div className="flex items-center gap-1">
             <span className="text-accent">L</span>
             <span className="text-accent">_</span>
-          </div>
-          <div className="flex gap-8 text-sm text-muted-foreground">
-            <a href="#about" className="hover:text-foreground transition-colors">About</a>
-            <a href="#docs" className="hover:text-foreground transition-colors">Docs</a>
-            <a href="#blog" className="hover:text-foreground transition-colors">Blog</a>
-            <a href="#contact" className="hover:text-foreground transition-colors">Contact</a>
           </div>
           <p className="text-sm text-muted-foreground">
             © 2026 Lector
