@@ -12,7 +12,7 @@ from app.routers import auth, submissions
 PATCH_FIX = """diff --git a/app.py b/app.py
 --- a/app.py
 +++ b/app.py
-@@ -142,8 +142,8 @@ def login():
+@@ -191,5 +191,5 @@ def login():
      password = request.form.get("password", "")
  
      conn = get_db()

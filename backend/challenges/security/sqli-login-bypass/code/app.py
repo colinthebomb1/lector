@@ -1,10 +1,21 @@
 import sqlite3
+import os
+from pathlib import Path
 from flask import Flask, request, redirect, session, render_template_string
 
 app = Flask(__name__)
 app.secret_key = "acme-internal-secret"
 
 DATABASE = "acme.db"
+SECRETS_DIR = Path("/app/secret")
+
+
+def read_secret(name: str, env_var: str | None = None) -> str:
+    if env_var:
+        value = os.environ.get(env_var)
+        if value:
+            return value
+    return (SECRETS_DIR / name).read_text(encoding="utf-8").strip()
 
 
 def get_db():
@@ -14,6 +25,7 @@ def get_db():
 
 
 def init_db():
+    admin_password = read_secret("admin_password.txt", "LECTOR_ADMIN_PASSWORD")
     conn = get_db()
     conn.execute(
         "CREATE TABLE IF NOT EXISTS users "
@@ -21,10 +33,12 @@ def init_db():
     )
     conn.execute("DELETE FROM users")
     conn.execute(
-        "INSERT INTO users (username, password, role) VALUES ('admin', 'S3cur3P@ssw0rd!', 'admin')"
+        "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+        ("admin", admin_password, "admin"),
     )
     conn.execute(
-        "INSERT INTO users (username, password, role) VALUES ('guest', 'guest123', 'user')"
+        "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+        ("guest", "guest123", "user"),
     )
     conn.commit()
     conn.close()
@@ -118,7 +132,42 @@ ADMIN_PAGE = """
         </div>
         <div class="flag-box">
             <h3>🚩 Confidential Token</h3>
-            <div class="flag">FLAG{sql_injection_is_not_authentication}</div>
+            <div class="flag">{{ flag }}</div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+USER_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Acme Corp - Employee Portal</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .topbar { background: #1e293b; border-bottom: 1px solid #334155; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .topbar h1 { font-size: 1.125rem; color: #38bdf8; }
+        .topbar a { color: #94a3b8; text-decoration: none; font-size: 0.875rem; }
+        .dashboard { padding: 2rem; max-width: 800px; margin: 0 auto; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+        .card h3 { color: #38bdf8; margin-bottom: 0.5rem; }
+        .notice { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem 1.25rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Acme Corp Portal</h1>
+        <a href="/logout">Logout</a>
+    </div>
+    <div class="dashboard">
+        <div class="card">
+            <h3>Welcome, {{ username }}</h3>
+            <p>Role: {{ role }}</p>
+        </div>
+        <div class="notice">
+            Your account does not have access to the admin dashboard.
         </div>
     </div>
 </body>
@@ -129,7 +178,7 @@ ADMIN_PAGE = """
 @app.route("/")
 def index():
     if session.get("logged_in"):
-        return redirect("/admin")
+        return redirect("/admin" if session.get("role") == "admin" else "/portal")
     return redirect("/login")
 
 
@@ -150,7 +199,7 @@ def login():
         session["logged_in"] = True
         session["username"] = user["username"]
         session["role"] = user["role"]
-        return redirect("/admin")
+        return redirect("/admin" if user["role"] == "admin" else "/portal")
 
     return render_template_string(LOGIN_PAGE, error="Invalid credentials")
 
@@ -159,8 +208,22 @@ def login():
 def admin():
     if not session.get("logged_in"):
         return redirect("/login")
+    if session.get("role") != "admin":
+        return redirect("/portal")
     return render_template_string(
         ADMIN_PAGE,
+        username=session.get("username", "unknown"),
+        role=session.get("role", "unknown"),
+        flag=read_secret("flag.txt", "LECTOR_FLAG"),
+    )
+
+
+@app.route("/portal")
+def portal():
+    if not session.get("logged_in"):
+        return redirect("/login")
+    return render_template_string(
+        USER_PAGE,
         username=session.get("username", "unknown"),
         role=session.get("role", "unknown"),
     )

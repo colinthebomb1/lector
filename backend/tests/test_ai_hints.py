@@ -38,6 +38,8 @@ def test_payload_tracking():
         challenge_id="sqli-login-bypass",
         container_id="fake-container",
         port=5000,
+        expected_flag="FLAG{sql_injection_is_not_authentication_deadbeef}",
+        admin_password="Acm3!deadbeef",
     )
     _sessions["test-user:sqli-login-bypass"] = session
 
