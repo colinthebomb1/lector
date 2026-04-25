@@ -470,8 +470,8 @@ function OverviewStage({
     <div className="h-full overflow-auto bg-background">
       <div className="max-w-[1440px] mx-auto px-4 md:px-8 py-8">
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_420px] gap-6">
-          <section className="min-w-0 border border-border rounded-lg bg-card/30 overflow-hidden">
-            <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-4">
+          <section className="min-w-0 border border-border/80 rounded-lg bg-card/40 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div className="px-5 py-3 border-b border-border/80 bg-background/30 flex items-center justify-between gap-4">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                   Challenge Overview
@@ -523,10 +523,10 @@ function OverviewStage({
                     {challenge.hint_tiers.map((hintTier) => (
                       <details
                         key={hintTier.tier}
-                        className="border border-border rounded bg-background/60 overflow-hidden group"
+                    className="border border-border/70 rounded bg-background/75 overflow-hidden group"
                       >
                         <summary className="list-none cursor-pointer px-3 py-3 flex items-center justify-between gap-3">
-                          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold">
                             Hint {hintTier.tier}
                           </span>
                           <span className="text-xs text-muted-foreground transition-transform group-open:rotate-180">
@@ -545,9 +545,9 @@ function OverviewStage({
           </section>
 
           <aside className="min-w-0 space-y-4">
-            <section className="border border-border rounded-lg bg-card/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
                   Progress
                 </p>
               </div>
@@ -581,12 +581,12 @@ function OverviewStage({
               </div>
             </section>
 
-            <section className="border border-border rounded-lg bg-card/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
                   Submission History
                 </p>
-                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/80 font-semibold">
                   {recentSubmissions.length} recent
                 </span>
               </div>
@@ -601,12 +601,12 @@ function OverviewStage({
               </div>
             </section>
 
-            <section className="border border-border rounded-lg bg-card/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            <section className="border border-border/80 rounded-lg bg-card/55 overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+              <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-foreground font-semibold">
                   Recent Payloads
                 </p>
-                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/80 font-semibold">
                   {payloads.length} captured
                 </span>
               </div>
@@ -629,7 +629,7 @@ function OverviewStage({
 
 function InfoChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-border rounded px-3 py-3 bg-background/60">
+    <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
       <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">{label}</p>
       <p className="text-sm text-foreground">{value}</p>
     </div>
@@ -638,8 +638,8 @@ function InfoChip({ label, value }: { label: string; value: string }) {
 
 function ProgressTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-border rounded px-3 py-3 bg-background/60">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1">{label}</p>
+    <div className="border border-border/70 rounded px-3 py-3 bg-background/72">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/90 font-semibold mb-1">{label}</p>
       <p className="text-sm text-foreground">{value}</p>
     </div>
   );
@@ -647,9 +647,9 @@ function ProgressTile({ label, value }: { label: string; value: string }) {
 
 function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
   return (
-    <div className="px-4 py-3 bg-background/30">
+    <div className="px-4 py-3 bg-background/55">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
           {submission.phase}
         </p>
         <span
@@ -685,9 +685,9 @@ function PayloadRow({ payload }: { payload: AttackPayloadRecord }) {
       : 'text-green-400 border-green-400/30 bg-green-400/5';
 
   return (
-    <div className="px-4 py-3 bg-background/30">
+    <div className="px-4 py-3 bg-background/55">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
           {payload.method} /{payload.path}
         </p>
         <span className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${statusClass}`}>
