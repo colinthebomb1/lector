@@ -10,6 +10,13 @@ class SubmissionType(str, Enum):
     ANNOTATION = "annotation"
 
 
+class SubmissionPhase(str, Enum):
+    READ = "read"
+    ATTACK = "attack"
+    DEFEND = "defend"
+    REVIEW = "review"
+
+
 class GradeStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -62,6 +69,8 @@ class Submission(BaseModel):
     user_id: str
     challenge_id: str
     submission_type: SubmissionType
+    phase: SubmissionPhase
     payload: dict  # the raw submission data
     result: GradeResult | None = None
+    score_awarded: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

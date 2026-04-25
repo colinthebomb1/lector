@@ -8,12 +8,14 @@ Flow:
 4. POST /api/attack/{challenge_id}/stop   → tear down the container
 """
 
+import re
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.database import get_db, is_db_connected
-from app.models import Submission, SubmissionType, GradeResult, GradeStatus
+from app.models import Submission, SubmissionPhase, SubmissionType, GradeResult, GradeStatus
 from app.routers.auth import require_session
 from app.services.attack_session import (
     start_attack_session,
@@ -85,10 +87,12 @@ async def submit_flag(
     passed = body.flag.strip() == expected_flag.strip()
 
     if is_db_connected():
+        score_awarded = 0
         submission = Submission(
             user_id=user["session_id"],
             challenge_id=challenge_id,
             submission_type=SubmissionType.FLAG,
+            phase=SubmissionPhase.ATTACK,
             payload={"flag": body.flag},
             result=GradeResult(
                 status=GradeStatus.PASSED if passed else GradeStatus.FAILED,
@@ -99,13 +103,32 @@ async def submit_flag(
         await db.submissions.insert_one(submission.model_dump())
 
         if passed:
-            await db.users.update_one(
-                {"session_id": user["session_id"]},
+            update = await db.users.update_one(
+                {
+                    "session_id": user["session_id"],
+                    "challenges_completed": {"$ne": f"{challenge_id}:attack"},
+                },
                 {
                     "$addToSet": {"challenges_completed": f"{challenge_id}:attack"},
                     "$inc": {"total_score": 50},
                 },
             )
+            if update.matched_count == 0:
+                await db.users.update_one(
+                    {"session_id": user["session_id"]},
+                    {"$addToSet": {"challenges_completed": f"{challenge_id}:attack"}},
+                )
+            else:
+                score_awarded = 50
+                await db.submissions.update_one(
+                    {
+                        "user_id": user["session_id"],
+                        "challenge_id": challenge_id,
+                        "submission_type": SubmissionType.FLAG,
+                        "created_at": submission.created_at,
+                    },
+                    {"$set": {"score_awarded": score_awarded}},
+                )
 
     return {
         "accepted": passed,
@@ -146,13 +169,27 @@ async def request_attack_hint(
 
     hint_tiers = [t.model_dump() for t in challenge.metadata.hint_tiers]
 
-    result = await generate_attack_hint(
-        challenge_name=challenge.metadata.name,
-        scenario=challenge.scenario,
-        vulnerable_code=vuln_code,
-        hint_tiers=hint_tiers,
-        attempted_payloads=payload_dicts,
-    )
+    try:
+        result = await generate_attack_hint(
+            challenge_name=challenge.metadata.name,
+            scenario=challenge.scenario,
+            vulnerable_code=vuln_code,
+            hint_tiers=hint_tiers,
+            attempted_payloads=payload_dicts,
+        )
+    except Exception as exc:  # pragma: no cover - last-resort guard
+        # Never let a hint failure escape as a 500 — without CORS headers
+        # the browser surfaces it as "Failed to fetch".
+        fallback_text = (
+            challenge.metadata.hint_tiers[0].text
+            if challenge.metadata.hint_tiers
+            else "Take another look at how user input is interpreted by the app."
+        )
+        return {
+            "hint": fallback_text,
+            "analysis": f"Hint service unavailable ({exc.__class__.__name__}); showing a static hint.",
+            "attempts_analyzed": len(payload_dicts),
+        }
 
     return {
         "hint": result.get("hint", result.get("text", "")),
@@ -246,15 +283,36 @@ async def proxy_to_container(
 
     if resp.status_code in (301, 302, 303, 307, 308):
         location = resp.headers.get("location", "")
-        if location.startswith("/"):
+        if location.startswith("/") and not location.startswith("//"):
             location = f"/api/attack/{challenge_id}/proxy{location}"
         response_headers["location"] = location
 
+    content = resp.content
+    content_type = resp.headers.get("content-type", "")
+    if "text/html" in content_type.lower():
+        content = _rewrite_html_urls(content, challenge_id)
+
     return Response(
-        content=resp.content,
+        content=content,
         status_code=resp.status_code,
         headers=response_headers,
     )
+
+
+_URL_ATTR_RE = re.compile(
+    rb'(?P<attr>action|href|src|formaction)\s*=\s*(?P<quote>["\'])/(?!/)',
+    flags=re.IGNORECASE,
+)
+
+
+def _rewrite_html_urls(body: bytes, challenge_id: str) -> bytes:
+    """Rewrite root-relative URLs in HTML so an iframe stays inside the proxy.
+
+    Form actions like `/login` would otherwise navigate the iframe to the
+    backend root and bypass the attack proxy entirely.
+    """
+    prefix = f"/api/attack/{challenge_id}/proxy".encode()
+    return _URL_ATTR_RE.sub(rb"\g<attr>=\g<quote>" + prefix + b"/", body)
 
 
 @router.api_route("/{challenge_id}/proxy", methods=["GET", "POST"])

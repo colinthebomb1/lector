@@ -37,10 +37,6 @@ declare global {
   }
 }
 
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
-  'http://localhost:8000';
-
 export function Auth({ onBackToHome, onAuthenticated }: AuthProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
