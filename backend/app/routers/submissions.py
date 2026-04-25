@@ -50,13 +50,35 @@ async def submit_summary(body: SummarySubmission, user: dict = Depends(require_s
 
 @router.post("/flag")
 async def submit_flag(body: FlagSubmission, user: dict = Depends(require_session)):
-    """Submit a captured flag (security track attack phase)."""
+    """Submit a captured flag (security track attack phase).
+    
+    Note: prefer the /api/attack/{id}/flag endpoint for the attack flow;
+    this endpoint is kept for backward compatibility.
+    """
     challenge = get_challenge(body.challenge_id)
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
 
-    # TODO: validate flag against expected value in challenge metadata
-    return {"accepted": True, "message": "Flag accepted"}
+    expected = challenge.metadata.flag
+    if not expected:
+        raise HTTPException(status_code=400, detail="Challenge has no flag")
+
+    passed = body.flag.strip() == expected.strip()
+
+    submission = Submission(
+        user_id=user["session_id"],
+        challenge_id=body.challenge_id,
+        submission_type=SubmissionType.FLAG,
+        payload=body.model_dump(),
+        result=GradeResult(
+            status=GradeStatus.PASSED if passed else GradeStatus.FAILED,
+            message="Flag accepted!" if passed else "Incorrect flag.",
+        ),
+    )
+    db = get_db()
+    await db.submissions.insert_one(submission.model_dump())
+
+    return {"accepted": passed, "message": "Flag accepted!" if passed else "Incorrect flag."}
 
 
 @router.post("/patch")

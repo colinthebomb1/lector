@@ -1,0 +1,17 @@
+{
+  "vulnerability": {
+    "type": "SQL Injection",
+    "cwe": "CWE-89",
+    "location": {"file": "app.py", "line": 135},
+    "root_cause": "User input embedded in SQL query via f-string formatting"
+  },
+  "exploit": {
+    "method": "Inject into username field to make WHERE clause always true",
+    "payload_example": "' OR '1'='1",
+    "effect": "Bypasses authentication, logs in as admin (first row)"
+  },
+  "fix": {
+    "approach": "Use parameterized queries with ? placeholders",
+    "key_change": "Replace f-string SQL with conn.execute(query, (username, password))"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "sqli-login-bypass",
+  "name": "SQL Injection: Login Bypass",
+  "track": "security",
+  "difficulty": "easy",
+  "category": "injection",
+  "description": "A login form builds its SQL query using string formatting. Exploit it to access the admin panel, then capture the flag.",
+  "estimated_minutes": 20,
+  "flag": "FLAG{sql_injection_is_not_authentication}",
+  "hint_tiers": [
+    {"tier": 1, "text": "Look closely at how user input reaches the SQL query. What happens if the input contains a single quote?"},
+    {"tier": 2, "text": "This is called SQL injection. The query uses f-string formatting, so your input becomes part of the SQL. Try crafting input that changes the query's logic."},
+    {"tier": 3, "text": "Try entering ' OR '1'='1 as the username. This makes the WHERE clause always true, logging you in as the first user (admin)."}
+  ]
+}

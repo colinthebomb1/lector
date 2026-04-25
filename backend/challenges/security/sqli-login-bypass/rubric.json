@@ -1,0 +1,25 @@
+{
+  "rubric_items": [
+    {
+      "id": "names_vuln_class",
+      "description": "Names the vulnerability class (SQL injection)",
+      "weight": 2
+    },
+    {
+      "id": "identifies_root_cause",
+      "description": "Identifies string formatting/interpolation in the SQL query as the root cause",
+      "weight": 3
+    },
+    {
+      "id": "describes_impact",
+      "description": "Explains that the exploit bypasses authentication / gains unauthorized admin access",
+      "weight": 2
+    },
+    {
+      "id": "mentions_fix",
+      "description": "Mentions parameterized queries or prepared statements as the fix",
+      "weight": 1
+    }
+  ],
+  "max_score": 8
+}
