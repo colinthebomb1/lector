@@ -133,9 +133,6 @@ export function CodeReviewPlay({
               ← Dashboard
             </button>
             <span className="text-muted-foreground">/</span>
-            <span className="font-mono text-xs text-muted-foreground truncate">
-              {challenge.id}
-            </span>
             <span className="text-foreground truncate">{challenge.name}</span>
           </div>
           <div className="flex items-center gap-2">
