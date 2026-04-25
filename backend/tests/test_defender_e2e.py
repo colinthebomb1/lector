@@ -9,21 +9,39 @@ from app import main
 from app.models import Challenge, ChallengeMetadata, Difficulty, Track
 from app.routers import auth, submissions
 
-PATCH_FIX = """diff --git a/app.py b/app.py
---- a/app.py
-+++ b/app.py
-@@ -191,5 +191,5 @@ def login():
-     password = request.form.get("password", "")
- 
-     conn = get_db()
--    query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
--    user = conn.execute(query).fetchone()
-+    query = "SELECT * FROM users WHERE username=? AND password=?"
-+    user = conn.execute(query, (username, password)).fetchone()
-     conn.close()
- 
-     if user:
-"""
+def make_patch_fix(base_path: Path) -> str:
+    code_dir = base_path / "code"
+    vulnerable_block = (
+        "    query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n"
+        "    user = conn.execute(query).fetchone()\n"
+    )
+    fixed_block = (
+        "    query = \"SELECT * FROM users WHERE username=? AND password=?\"\n"
+        "    user = conn.execute(query, (username, password)).fetchone()\n"
+    )
+    for relative_path in ("app.py", "db.py"):
+        target_path = code_dir / relative_path
+        if not target_path.exists():
+            continue
+        original = target_path.read_text(encoding="utf-8")
+        updated = original.replace(vulnerable_block, fixed_block, 1)
+        if updated == original:
+            continue
+
+        old_lines = original.splitlines()
+        new_lines = updated.splitlines()
+        hunk_lines = "\n".join(
+            [*(f"-{line}" for line in old_lines), *(f"+{line}" for line in new_lines)]
+        )
+        return (
+            f"diff --git a/{relative_path} b/{relative_path}\n"
+            f"--- a/{relative_path}\n"
+            f"+++ b/{relative_path}\n"
+            f"@@ -1,{max(len(old_lines), 1)} +1,{max(len(new_lines), 1)} @@\n"
+            f"{hunk_lines}\n"
+        )
+
+    raise AssertionError("Expected vulnerable SQL query block was not found in app.py or db.py")
 
 
 def make_real_challenge() -> Challenge:
@@ -68,9 +86,11 @@ def defender_client(monkeypatch):
 
 @pytest.mark.e2e
 def test_sqli_defender_patch_grades_successfully(defender_client):
+    base_path = Path(__file__).resolve().parents[1] / "challenges" / "security" / "sqli-login-bypass"
+    patch_fix = make_patch_fix(base_path)
     response = defender_client.post(
         "/api/submissions/patch",
-        json={"challenge_id": "sqli-login-bypass", "patch": PATCH_FIX},
+        json={"challenge_id": "sqli-login-bypass", "patch": patch_fix},
     )
 
     assert response.status_code == 200

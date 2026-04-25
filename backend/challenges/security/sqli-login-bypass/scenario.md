@@ -12,7 +12,7 @@ You're reviewing a small internal admin panel for a company called **Acme Corp**
 
 ## What You're Looking At
 
-The application is a Flask web app with a single `app.py` file. Pay attention to the `/login` route — specifically how the SQL query is constructed.
+The application is a small Flask web app split across a few files. Start with `app.py` to follow the login route, then inspect the database helper it calls to see how credentials are checked.
 
 ## Tips
 
