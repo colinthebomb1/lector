@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.database import get_db
+from app.database import get_db, is_db_connected
 from app.models import (
     PatchSubmission,
     SummarySubmission,
     AnnotationSubmission,
     Submission,
+    SubmissionPhase,
     SubmissionType,
     GradeResult,
     GradeStatus,
@@ -31,14 +32,16 @@ async def submit_summary(body: SummarySubmission, user: dict = Depends(require_s
         user_id=user["session_id"],
         challenge_id=body.challenge_id,
         submission_type=SubmissionType.SUMMARY,
+        phase=SubmissionPhase.READ,
         payload=body.model_dump(),
         result=GradeResult(
             status=GradeStatus.PASSED if result.get("passed") else GradeStatus.FAILED,
             message=result.get("feedback", ""),
         ),
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
     return {
         "passed": result.get("passed", False),
@@ -61,30 +64,46 @@ async def submit_patch(body: PatchSubmission, user: dict = Depends(require_sessi
         user_id=user["session_id"],
         challenge_id=body.challenge_id,
         submission_type=SubmissionType.PATCH,
+        phase=SubmissionPhase.DEFEND,
         payload=body.model_dump(),
         result=result,
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    score_awarded = 0
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
-    if result.status == GradeStatus.PASSED:
-        update = await db.users.update_one(
-            {
-                "session_id": user["session_id"],
-                "challenges_completed": {"$ne": body.challenge_id},
-            },
-            {
-                "$addToSet": {"challenges_completed": body.challenge_id},
-                "$inc": {"total_score": 100},
-            },
-        )
-        if update.matched_count == 0:
-            await db.users.update_one(
-                {"session_id": user["session_id"]},
-                {"$addToSet": {"challenges_completed": body.challenge_id}},
+        if result.status == GradeStatus.PASSED:
+            update = await db.users.update_one(
+                {
+                    "session_id": user["session_id"],
+                    "challenges_completed": {"$ne": body.challenge_id},
+                },
+                {
+                    "$addToSet": {"challenges_completed": body.challenge_id},
+                    "$inc": {"total_score": 100},
+                },
             )
+            if update.matched_count == 0:
+                await db.users.update_one(
+                    {"session_id": user["session_id"]},
+                    {"$addToSet": {"challenges_completed": body.challenge_id}},
+                )
+            else:
+                score_awarded = 100
+                await db.submissions.update_one(
+                    {
+                        "user_id": user["session_id"],
+                        "challenge_id": body.challenge_id,
+                        "submission_type": SubmissionType.PATCH,
+                        "created_at": submission.created_at,
+                    },
+                    {"$set": {"score_awarded": score_awarded}},
+                )
 
-    return result.model_dump()
+    response = result.model_dump()
+    response["score_awarded"] = score_awarded
+    return response
 
 
 @router.post("/annotation")
@@ -107,11 +126,13 @@ async def submit_annotations(
         user_id=user["session_id"],
         challenge_id=body.challenge_id,
         submission_type=SubmissionType.ANNOTATION,
+        phase=SubmissionPhase.REVIEW,
         payload=body.model_dump(),
         result=grade_result,
     )
-    db = get_db()
-    await db.submissions.insert_one(submission.model_dump())
+    if is_db_connected():
+        db = get_db()
+        await db.submissions.insert_one(submission.model_dump())
 
     return results
 
@@ -120,7 +141,14 @@ async def submit_annotations(
 async def get_submission_history(
     challenge_id: str, user: dict = Depends(require_session)
 ):
-    """Get all submissions for a challenge by the current user."""
+    """Get a normalized submission timeline plus progress summary."""
+    if not is_db_connected():
+        return {
+            "challenge_id": challenge_id,
+            "submissions": [],
+            "progress": _build_progress_summary([]),
+        }
+
     db = get_db()
     cursor = db.submissions.find(
         {"user_id": user["session_id"], "challenge_id": challenge_id}
@@ -130,4 +158,44 @@ async def get_submission_history(
     async for doc in cursor:
         doc.pop("_id", None)
         submissions.append(doc)
-    return submissions
+    return {
+        "challenge_id": challenge_id,
+        "submissions": submissions,
+        "progress": _build_progress_summary(submissions),
+    }
+
+
+def _build_progress_summary(submissions: list[dict]) -> dict:
+    summary_passed = False
+    attack_captured = False
+    defend_passed = False
+    review_fixed = False
+    total_score_awarded = 0
+    last_submission_at = submissions[0]["created_at"] if submissions else None
+    if hasattr(last_submission_at, "isoformat"):
+        last_submission_at = last_submission_at.isoformat().replace("+00:00", "Z")
+
+    for submission in submissions:
+        result = submission.get("result") or {}
+        result_status = result.get("status")
+        phase = submission.get("phase")
+        total_score_awarded += submission.get("score_awarded", 0)
+
+        if submission.get("submission_type") == SubmissionType.SUMMARY and result_status == GradeStatus.PASSED:
+            summary_passed = True
+        if phase == SubmissionPhase.ATTACK and result_status == GradeStatus.PASSED:
+            attack_captured = True
+        if phase == SubmissionPhase.DEFEND and result_status == GradeStatus.PASSED:
+            defend_passed = True
+        if phase == SubmissionPhase.REVIEW and result_status == GradeStatus.PASSED:
+            review_fixed = True
+
+    return {
+        "summary_passed": summary_passed,
+        "attack_captured": attack_captured,
+        "defend_passed": defend_passed,
+        "review_fixed": review_fixed,
+        "attempt_count": len(submissions),
+        "total_score_awarded": total_score_awarded,
+        "last_submission_at": last_submission_at,
+    }
