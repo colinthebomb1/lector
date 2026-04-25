@@ -1,6 +1,6 @@
-import re
 import uuid
 
+from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, HTTPException, Request, Response
 from passlib.hash import pbkdf2_sha256
 from pydantic import BaseModel, Field, field_validator
@@ -9,8 +9,6 @@ from pymongo.errors import DuplicateKeyError
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
-
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -27,10 +25,10 @@ class SignupRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def _check_email(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _EMAIL_RE.match(v):
+        email = _normalize_email(v)
+        if not email:
             raise ValueError("Invalid email format")
-        return v
+        return email
 
 
 class LoginRequest(BaseModel):
@@ -41,6 +39,14 @@ class LoginRequest(BaseModel):
     @classmethod
     def _normalize_email(cls, v: str) -> str:
         return v.strip().lower()
+
+
+def _normalize_email(value: str) -> str | None:
+    try:
+        result = validate_email(value.strip(), check_deliverability=False)
+    except EmailNotValidError:
+        return None
+    return result.normalized.lower()
 
 
 def _set_session_cookie(response: Response, session_id: str) -> None:
