@@ -9,6 +9,7 @@ from pymongo.errors import DuplicateKeyError
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
+from app.services.streak import current_streak
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -135,12 +136,15 @@ async def get_current_user(request: Request):
     user = await _get_user_from_request(request)
     if not user:
         return {"authenticated": False}
+    streak = await current_streak(get_db(), user["session_id"])
     return {
         "authenticated": True,
         "nickname": user.get("nickname", "anonymous"),
+        "name": user.get("name"),
         "email": user.get("email"),
         "challenges_completed": user.get("challenges_completed", []),
         "total_score": user.get("total_score", 0),
+        "streak": streak,
     }
 
 

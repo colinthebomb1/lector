@@ -40,8 +40,14 @@ def load_challenges() -> dict[str, Challenge]:
             code_dir = challenge_dir / "code"
             if code_dir.exists():
                 for f in code_dir.rglob("*"):
-                    if f.is_file():
+                    if not f.is_file():
+                        continue
+                    try:
                         code_files[str(f.relative_to(code_dir))] = f.read_text()
+                    except (UnicodeDecodeError, OSError):
+                        # Skip binary or unreadable files instead of failing
+                        # the whole load.
+                        continue
 
             ref_summary = ""
             ref_path = challenge_dir / "solution" / "reference.md"

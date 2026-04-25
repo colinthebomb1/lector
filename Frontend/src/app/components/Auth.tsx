@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { BlinkingCursor } from './BlinkingCursor';
+import { API_BASE } from '../lib/api';
 
 interface AuthProps {
   onBackToHome?: () => void;
   onAuthenticated?: (user: { nickname: string; email: string | null }) => void;
 }
-
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
-  'http://localhost:8000';
 
 export function Auth({ onBackToHome, onAuthenticated }: AuthProps) {
   const [isLogin, setIsLogin] = useState(true);

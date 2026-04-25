@@ -1,20 +1,86 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Nav } from './components/Nav';
 import { BlinkingCursor } from './components/BlinkingCursor';
 import { Feature } from './components/Feature';
 import { CodeSnippet } from './components/CodeSnippet';
 import { Auth } from './components/Auth';
+import { Dashboard } from './components/Dashboard';
+import { Profile } from './components/Profile';
+import { api, type CurrentUser } from './lib/api';
+
+type View = 'home' | 'auth' | 'dashboard' | 'profile';
 
 export default function App() {
-  const [showAuth, setShowAuth] = useState(false);
+  const [view, setView] = useState<View>('home');
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [bootChecked, setBootChecked] = useState(false);
 
-  if (showAuth) {
-    return <Auth onBackToHome={() => setShowAuth(false)} />;
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await api.me();
+      if (me.authenticated) {
+        setUser(me);
+        return me;
+      }
+    } catch {
+      // network/server hiccup — treat as logged-out
+    }
+    setUser(null);
+    return null;
+  }, []);
+
+  useEffect(() => {
+    refreshUser().then((me) => {
+      if (me) setView('dashboard');
+      setBootChecked(true);
+    });
+  }, [refreshUser]);
+
+  if (!bootChecked) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <span className="text-muted-foreground text-sm">Loading...</span>
+      </div>
+    );
+  }
+
+  if (view === 'auth') {
+    return (
+      <Auth
+        onBackToHome={() => setView('home')}
+        onAuthenticated={async () => {
+          await refreshUser();
+          setView('dashboard');
+        }}
+      />
+    );
+  }
+
+  if (view === 'dashboard' && user) {
+    return (
+      <Dashboard
+        user={user}
+        onProfileClick={() => setView('profile')}
+      />
+    );
+  }
+
+  if (view === 'profile' && user) {
+    return (
+      <Profile
+        user={user}
+        onBack={() => setView('dashboard')}
+        onLoggedOut={() => {
+          setUser(null);
+          setView('home');
+        }}
+      />
+    );
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Nav onAuthClick={() => setShowAuth(true)} />
+      <Nav onAuthClick={() => setView(user ? 'dashboard' : 'auth')} />
 
       {/* Hero Section */}
       <section className="min-h-screen flex flex-col items-center justify-center px-4 md:px-8 relative overflow-hidden">
@@ -30,10 +96,10 @@ export default function App() {
           </p>
           <div className="flex gap-4 justify-center flex-wrap animate-fadeInUp animate-delay-200">
             <button
-              onClick={() => setShowAuth(true)}
+              onClick={() => setView(user ? 'dashboard' : 'auth')}
               className="px-6 md:px-8 py-3 bg-accent text-accent-foreground hover:bg-accent/90 transition-all hover:scale-105"
             >
-              Start Reading →
+              {user ? 'Open Dashboard →' : 'Start Reading →'}
             </button>
             <button className="px-6 md:px-8 py-3 border border-foreground/20 text-foreground hover:bg-foreground/10 transition-all hover:border-foreground/40">
               See an Example
