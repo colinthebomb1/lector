@@ -1,0 +1,17 @@
+{
+  "vulnerability": {
+    "type": "Reflected Cross-Site Scripting",
+    "cwe": "CWE-79",
+    "location": {"file": "app.py", "function": "preview"},
+    "root_cause": "User-supplied comment is wrapped in `Markup(comment)` and rendered into the page. `Markup` marks the string as already-safe HTML, so Jinja's auto-escape is bypassed."
+  },
+  "exploit": {
+    "method": "Submit a comment containing a <script> tag (or an event-handler attribute like onerror) — it lands in the DOM verbatim and executes on the preview page",
+    "payload_example": "<script>document.body.innerText = window.__INTERNAL_NOTES</script>",
+    "effect": "Arbitrary script runs in the victim's browser with access to page globals; in this challenge the flag is exposed as window.__INTERNAL_NOTES"
+  },
+  "fix": {
+    "approach": "Remove the Markup wrapper so the comment is auto-escaped, or sanitize through an allow-list (e.g. bleach.clean)",
+    "key_change": "Replace `rendered = Markup(comment)` with `rendered = comment` — Jinja's default auto-escape will then HTML-encode the output"
+  }
+}

@@ -43,6 +43,8 @@ export function ChallengePlay({
   const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
+  const [targetPath, setTargetPath] = useState('/');
+  const [targetCanGoBack, setTargetCanGoBack] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [defendEditorFile, setDefendEditorFile] = useState<string | null>(null);
@@ -64,6 +66,8 @@ export function ChallengePlay({
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
+  const targetHistoryRef = useRef<string[]>(['/']);
+  const targetHistoryIndexRef = useRef(0);
 
   const refreshOverviewData = useCallback(async () => {
     const [historyResult, payloadHistory] = await Promise.all([
@@ -83,6 +87,60 @@ export function ChallengePlay({
       // best-effort cleanup
     }
   }, [challengeId]);
+
+  const setTargetLocation = useCallback(
+    (path: string, options: { push?: boolean; reload?: boolean } = {}) => {
+      const normalizedPath = normalizeTargetPath(path);
+      const push = options.push ?? true;
+      const reload = options.reload ?? true;
+
+      if (push) {
+        const history = targetHistoryRef.current;
+        const currentIndex = targetHistoryIndexRef.current;
+        if (history[currentIndex] !== normalizedPath) {
+          const nextHistory = history.slice(0, currentIndex + 1);
+          nextHistory.push(normalizedPath);
+          targetHistoryRef.current = nextHistory;
+          targetHistoryIndexRef.current = nextHistory.length - 1;
+        }
+      } else {
+        targetHistoryRef.current[targetHistoryIndexRef.current] = normalizedPath;
+      }
+
+      setTargetPath(normalizedPath);
+      setTargetCanGoBack(targetHistoryIndexRef.current > 0);
+      if (reload) {
+        setProxyUrl(api.proxyUrl(challengeId, normalizedPath));
+        setIframeKey((k) => k + 1);
+      }
+    },
+    [challengeId],
+  );
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        data.challengeId !== challengeId ||
+        typeof data.path !== 'string'
+      ) {
+        return;
+      }
+
+      if (
+        data.type === 'lector-target-click' ||
+        data.type === 'lector-target-submit' ||
+        data.type === 'lector-target-location'
+      ) {
+        setTargetLocation(data.path, { push: true, reload: false });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [challengeId, setTargetLocation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +188,10 @@ export function ChallengePlay({
     setStatus({ kind: 'starting' });
     try {
       await api.startAttack(challengeId);
+      setTargetPath('/');
+      setTargetCanGoBack(false);
+      targetHistoryRef.current = ['/'];
+      targetHistoryIndexRef.current = 0;
       setProxyUrl(api.proxyUrl(challengeId));
       setIframeKey((k) => k + 1);
       setStatus({ kind: 'ready' });
@@ -140,6 +202,22 @@ export function ChallengePlay({
         message: err instanceof Error ? err.message : 'Failed to start challenge',
       });
     }
+  }, [challengeId]);
+
+  const handleNavigateTarget = useCallback(() => {
+    setTargetLocation(targetPath);
+  }, [setTargetLocation, targetPath]);
+
+  const handleTargetBack = useCallback(() => {
+    const currentIndex = targetHistoryIndexRef.current;
+    if (currentIndex <= 0) return;
+    const nextIndex = currentIndex - 1;
+    targetHistoryIndexRef.current = nextIndex;
+    const nextPath = targetHistoryRef.current[nextIndex] ?? '/';
+    setTargetPath(nextPath);
+    setTargetCanGoBack(nextIndex > 0);
+    setProxyUrl(api.proxyUrl(challengeId, nextPath));
+    setIframeKey((k) => k + 1);
   }, [challengeId]);
 
   const handleExit = useCallback(async () => {
@@ -278,7 +356,7 @@ export function ChallengePlay({
   );
 
   const recentSubmissions = history?.submissions.slice(0, 6) ?? [];
-  const recentPayloads = payloads.slice(-6).reverse();
+  const recentPayloads = payloads.slice(-6);
   const progress = history?.progress;
   const defendHints = useMemo(() => buildDefendHints(challenge), [challenge]);
 
@@ -313,6 +391,10 @@ export function ChallengePlay({
                     setHint(null);
                     setFlagFeedback(null);
                     setProxyUrl(null);
+                    setTargetPath('/');
+                    setTargetCanGoBack(false);
+                    targetHistoryRef.current = ['/'];
+                    targetHistoryIndexRef.current = 0;
                   } else {
                     try {
                       await refreshOverviewData();
@@ -447,9 +529,40 @@ export function ChallengePlay({
                 className="flex flex-col min-w-0"
                 style={{ width: `${100 - splitPercent}%` }}
               >
-                <div className="flex items-center justify-between px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0 gap-3">
-                  <span className="font-mono truncate">{proxyUrl ?? 'about:blank'}</span>
-                  <span className="uppercase tracking-wider flex-shrink-0">Target app</span>
+                <div className="flex items-center px-4 py-2 border-b border-border text-xs text-muted-foreground flex-shrink-0 gap-3">
+                  <form
+                    className="flex-1 min-w-0 flex items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleNavigateTarget();
+                    }}
+                  >
+                    <span className="uppercase tracking-wider flex-shrink-0">Target</span>
+                    <button
+                      type="button"
+                      onClick={handleTargetBack}
+                      disabled={status.kind !== 'ready' || !targetCanGoBack}
+                      className="px-2.5 py-1 text-[10px] uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                      title="Go back"
+                    >
+                      Back
+                    </button>
+                    <input
+                      type="text"
+                      value={targetPath}
+                      onChange={(event) => setTargetPath(event.target.value)}
+                      className="flex-1 min-w-0 bg-background border border-border rounded px-2 py-1 font-mono text-xs text-foreground focus:outline-none focus:border-accent transition-colors"
+                      placeholder="/"
+                      title="Target app path"
+                    />
+                    <button
+                      type="submit"
+                      disabled={status.kind !== 'ready'}
+                      className="px-2.5 py-1 text-[10px] uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                      Go
+                    </button>
+                  </form>
                 </div>
                 <div className="relative bg-black flex-1 min-h-0">
                   {dragging && <div className="absolute inset-0 z-10" />}
@@ -1258,6 +1371,17 @@ function splitForDiff(content: string) {
   if (normalized === '') return [];
   if (normalized.endsWith('\n')) return normalized.slice(0, -1).split('\n');
   return normalized.split('\n');
+}
+
+function normalizeTargetPath(path: string) {
+  const trimmed = path.trim();
+  if (!trimmed) return '/';
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+  } catch {
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  }
 }
 
 function ExploitAttemptSummary({ passed }: { passed: boolean }) {

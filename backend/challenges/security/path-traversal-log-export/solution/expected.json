@@ -1,0 +1,17 @@
+{
+  "vulnerability": {
+    "type": "Path Traversal",
+    "cwe": "CWE-22",
+    "location": {"file": "app.py", "function": "export_log"},
+    "root_cause": "User-controlled `file` query parameter is joined onto LOGS_DIR with `LOGS_DIR / requested` and opened directly, with no canonicalization or containment check"
+  },
+  "exploit": {
+    "method": "Use a crafted traversal spelling that survives the app's naive replacement filter",
+    "payload_example": "/export?file=....//....//secrets/super-secret/flag.txt",
+    "effect": "Reads arbitrary files the app process can access; in this challenge, leaks the flag"
+  },
+  "fix": {
+    "approach": "Resolve the candidate path and assert it remains inside LOGS_DIR before opening",
+    "key_change": "candidate = (LOGS_DIR / requested).resolve(); base = LOGS_DIR.resolve(); if base != candidate and base not in candidate.parents: abort(403)"
+  }
+}

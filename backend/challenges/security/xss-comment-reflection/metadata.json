@@ -4,21 +4,21 @@
   "track": "security",
   "difficulty": "easy",
   "category": "xss",
-  "description": "Explore reflected input handling in a public comment preview flow.",
+  "description": "A feedback form's preview page reflects user comments back as HTML, with template auto-escape disabled. The flag is exposed as a JS global on the same page.",
   "estimated_minutes": 20,
+  "flag": "FLAG{xss_escape_user_output_always}",
   "hint_tiers": [
     {
       "tier": 1,
-      "text": "Look for where unsanitized user input is rendered directly into HTML."
+      "text": "Look at how the comment is passed into the template. Is anything telling Jinja 'this string is already safe HTML, don't escape it'?"
     },
     {
       "tier": 2,
-      "text": "Try payloads that execute JavaScript through common HTML attributes."
+      "text": "Reflected XSS — the comment is rendered without escaping. Try a comment containing a <script> tag and see if it survives in the rendered HTML."
     },
     {
       "tier": 3,
-      "text": "A proper fix should escape output by default and only allow trusted markup."
+      "text": "Try <script>document.body.innerText = window.__INTERNAL_NOTES</script>. The fix is to remove the Markup wrapper so Jinja's auto-escape applies — or use a sanitizer like bleach.clean with an allow-list."
     }
-  ],
-  "flag": "FLAG{mock_xss_comment_reflection}"
+  ]
 }

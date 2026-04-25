@@ -152,8 +152,8 @@ async def _wait_for_ready(port: int, timeout: int = 15) -> None:
     async with httpx.AsyncClient() as client:
         while time.time() < deadline:
             try:
-                r = await client.get(f"http://localhost:{port}/login", timeout=2)
-                if r.status_code in (200, 302):
+                r = await client.get(f"http://localhost:{port}/", timeout=2)
+                if r.status_code < 500:
                     return
             except Exception:
                 pass

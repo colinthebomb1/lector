@@ -4,21 +4,21 @@
   "track": "security",
   "difficulty": "medium",
   "category": "file-access",
-  "description": "Inspect file path handling in a downloadable log export endpoint.",
+  "description": "An ops dashboard exports server logs from /app/logs by filename. The export endpoint joins user input onto that base path with no containment check.",
   "estimated_minutes": 30,
+  "flag": "FLAG{path_traversal_canonicalize_paths}",
   "hint_tiers": [
     {
       "tier": 1,
-      "text": "Watch for filename or path parameters joined directly to base directories."
+      "text": "Find the route that streams a file based on a query parameter. What does Path(base) / user_input do when user_input contains ..?"
     },
     {
       "tier": 2,
-      "text": "Traversal patterns often use ../ segments or encoded variants."
+      "text": "Deployment notes say the app runs at /app and application secrets live at /secrets/super-secret/flag.txt. If the most obvious spelling disappears before the file is opened, what similar-looking input would still normalize to the same path?"
     },
     {
       "tier": 3,
-      "text": "Resolve and verify final paths stay inside an allowed base directory."
+      "text": "Try /export?file=....//....//secrets/super-secret/flag.txt. The filter removes ../ once, leaving a valid traversal. The fix is to resolve the candidate path with .resolve() and assert it stays under the logs base directory."
     }
-  ],
-  "flag": "FLAG{mock_path_traversal_log_export}"
+  ]
 }
