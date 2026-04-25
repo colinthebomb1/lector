@@ -53,7 +53,7 @@ def test_guest_cannot_access_admin_flag():
 
 def test_logout_clears_session():
     s = requests.Session()
-    s.post(f"{BASE}/login", data={"username": "admin", "password": "S3cur3P@ssw0rd!"})
+    s.post(f"{BASE}/login", data={"username": "guest", "password": "guest123"})
     s.get(f"{BASE}/logout")
     r = s.get(f"{BASE}/admin", allow_redirects=False)
     assert r.status_code == 302
