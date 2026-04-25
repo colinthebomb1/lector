@@ -195,7 +195,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
           <div className="flex flex-col gap-7">
             <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 border border-accent/30 bg-accent/5 rounded-full text-[11px] uppercase tracking-[0.2em] text-accent animate-fadeInUp">
               <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
-              Reading practice for engineers
+              Code review practice for engineers
             </div>
 
             <h1
@@ -207,9 +207,9 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             </h1>
 
             <p className="text-lg md:text-2xl text-foreground/80 max-w-2xl leading-snug animate-fadeInUp animate-delay-200">
-              Reading code is the most-used skill in software engineering — and almost{' '}
+              Reading code is the most-used skill in software engineering — and{' '}
               <span className="text-foreground/50 line-through">nowhere</span>{' '}
-              <span className="text-accent glow-text-accent">here</span> teaches it deliberately.
+              <span className="text-accent glow-text-accent">now here</span> teaches it deliberately.
             </p>
 
             <p className="text-sm md:text-base text-muted-foreground max-w-xl leading-relaxed animate-fadeInUp animate-delay-300">
@@ -223,7 +223,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                 onClick={onPrimaryClick}
                 className="group relative px-7 py-3.5 bg-accent text-accent-foreground font-medium overflow-hidden transition-all hover:scale-[1.02] animate-glow-pulse"
               >
-                <span className="relative z-10">{user ? 'Open dashboard →' : 'Start reading →'}</span>
+                <span className="relative z-10">{user ? 'Open dashboard →' : 'Begin review →'}</span>
                 <span className="absolute inset-0 bg-gradient-to-r from-cyan-300 to-accent opacity-0 group-hover:opacity-100 transition-opacity"></span>
               </button>
               <a
@@ -315,10 +315,10 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               title="Attack → Defend"
               punchline="Exploit a live, vulnerable app in a sandbox. Then patch the source so the same exploit no longer works."
               steps={[
-                'Read the vulnerable app and write a 1-sentence summary',
-                'Capture the flag using the live exploit surface',
-                'Patch the vulnerability in Monaco',
-                'Grader rebuilds + replays your attack — must fail',
+                'Read and summarize the app',
+                'Exploit the vulnerability',
+                'Patch the vulnerability',
+                'Grader verifies a successful patch',
               ]}
               accentClass="text-accent"
               borderClass="border-accent/30"
@@ -328,12 +328,12 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             <TrackCard
               badge="Code Review"
               title="Audit → Fix"
-              punchline="Read a file or codebase containing planted bugs. Annotate the bad lines, name the bug class, and ship a fix."
+              punchline="Review code like a real PR: Improve exception handling, identify thin or missing test coverage. Name the gaps, then land a fix the grader accepts."
               steps={[
                 'Read the file and summarize what it does',
-                'Annotate suspicious lines with bug categories',
-                'Propose a fix — diff or full file',
-                'Grader runs the failing tests — must now pass',
+                'Mark code quality issues',
+                'Propose changes',
+                'Get instant feedback',
               ]}
               accentClass="text-cyan-300"
               borderClass="border-cyan-400/30"
