@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "lector": {
+      "command": "/Users/tunguyen/Documents/GitHub/lector/Untitled/lector/backend/.venv/bin/python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "/Users/tunguyen/Documents/GitHub/lector/Untitled/lector/backend"
+    }
+  }
+}
