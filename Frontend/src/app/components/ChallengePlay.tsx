@@ -45,7 +45,6 @@ export function ChallengePlay({
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [defendReferenceFile, setDefendReferenceFile] = useState<string | null>(null);
   const [defendEditorFile, setDefendEditorFile] = useState<string | null>(null);
   const [flag, setFlag] = useState('');
   const [flagFeedback, setFlagFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -104,7 +103,6 @@ export function ChallengePlay({
         const fileNames = Object.keys(detail.code_files);
         if (fileNames.length > 0) {
           setActiveFile(fileNames[0]);
-          setDefendReferenceFile(fileNames[0]);
           setDefendEditorFile(fileNames[0]);
         }
         setEditedFiles(detail.code_files);
@@ -558,10 +556,8 @@ export function ChallengePlay({
         ) : workspaceMode === 'defend' && status.kind === 'ready' ? (
           <DefendWorkspace
             challenge={challenge}
-            referenceFile={defendReferenceFile}
             editorFile={defendEditorFile}
             codeFileNames={codeFileNames}
-            onReferenceFileSelect={setDefendReferenceFile}
             onEditorFileSelect={setDefendEditorFile}
             editedFiles={editedFiles}
             onFileChange={(name, value) =>
@@ -931,10 +927,8 @@ function OverviewStage({
 
 interface DefendWorkspaceProps {
   challenge: ChallengeDetail | null;
-  referenceFile: string | null;
   editorFile: string | null;
   codeFileNames: string[];
-  onReferenceFileSelect: (name: string) => void;
   onEditorFileSelect: (name: string) => void;
   editedFiles: Record<string, string>;
   onFileChange: (name: string, value: string) => void;
@@ -948,10 +942,8 @@ interface DefendWorkspaceProps {
 
 function DefendWorkspace({
   challenge,
-  referenceFile,
   editorFile,
   codeFileNames,
-  onReferenceFileSelect,
   onEditorFileSelect,
   editedFiles,
   onFileChange,
@@ -962,11 +954,11 @@ function DefendWorkspace({
   recentSubmissions,
   defendHints,
 }: DefendWorkspaceProps) {
-  const selectedReferenceFile = referenceFile ?? codeFileNames[0] ?? '';
   const selectedEditorFile = editorFile ?? codeFileNames[0] ?? '';
+  const [workspaceView, setWorkspaceView] = useState<'reference' | 'edit'>('edit');
   const selectedEditorValue = selectedEditorFile ? editedFiles[selectedEditorFile] ?? '' : '';
   const selectedReferenceValue =
-    selectedReferenceFile && challenge ? challenge.code_files[selectedReferenceFile] ?? '' : '';
+    selectedEditorFile && challenge ? challenge.code_files[selectedEditorFile] ?? '' : '';
   const selectedEditorOriginalValue =
     selectedEditorFile && challenge ? challenge.code_files[selectedEditorFile] ?? '' : '';
   const changedFileCount = challenge
@@ -982,35 +974,7 @@ function DefendWorkspace({
 
   return (
     <div className="h-full min-h-0 overflow-hidden flex bg-background">
-      <div className="w-[38%] min-w-0 min-h-0 overflow-hidden border-r border-border/80 bg-card/40 flex flex-col shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
-        <div className="px-4 py-3 border-b border-border/80 bg-background/35 flex-shrink-0">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold mb-2">
-            Reference
-          </p>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedReferenceFile}
-              onChange={(e) => onReferenceFileSelect(e.target.value)}
-              className="min-w-0 flex-1 rounded border border-border/80 bg-background/85 px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:border-accent"
-            >
-              {codeFileNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto p-4 bg-background/45">
-          {selectedReferenceFile && challenge ? (
-            <CodeSnippet code={selectedReferenceValue} />
-          ) : (
-            <p className="text-sm text-muted-foreground">No source files loaded.</p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 min-w-0 min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-[62%_38%]">
         <div className="min-w-0 min-h-0 overflow-hidden flex flex-col border-r border-border/80 bg-card/45 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
           <div className="px-5 py-4 border-b border-border/80 bg-background/35 flex-shrink-0">
             <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/85 font-semibold">
@@ -1024,15 +988,36 @@ function DefendWorkspace({
           </div>
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="px-4 py-2 border-b border-border/80 bg-background/35 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1 max-w-sm">
-                <p className="text-xs text-foreground/85 font-semibold uppercase tracking-wider">
-                  Editor
-                </p>
+              <div className="min-w-0 flex-1 max-w-md">
+                <div className="flex items-center gap-2 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceView('reference')}
+                    className={`px-2 py-1 text-[10px] uppercase tracking-[0.16em] rounded border transition-colors ${
+                      workspaceView === 'reference'
+                        ? 'border-sky-400/50 text-sky-300 bg-sky-400/10'
+                        : 'border-border/80 text-muted-foreground hover:text-foreground hover:border-border'
+                    }`}
+                  >
+                    Reference
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceView('edit')}
+                    className={`px-2 py-1 text-[10px] uppercase tracking-[0.16em] rounded border transition-colors ${
+                      workspaceView === 'edit'
+                        ? 'border-accent/60 text-accent bg-accent/10'
+                        : 'border-border/80 text-muted-foreground hover:text-foreground hover:border-border'
+                    }`}
+                  >
+                    Edit
+                  </button>
+                </div>
                 <select
                   value={selectedEditorFile}
                   onChange={(e) => onEditorFileSelect(e.target.value)}
                   className="mt-1 w-full rounded border border-border/80 bg-background/85 px-3 py-1.5 font-mono text-xs text-foreground focus:outline-none focus:border-accent"
-                  title="Editor file"
+                  title="Workspace file"
                 >
                   {codeFileNames.map((name) => (
                     <option key={name} value={name}>
@@ -1059,32 +1044,46 @@ function DefendWorkspace({
             </div>
             <div className="flex-1 min-h-0 p-4">
               <div className="h-full min-h-[320px] overflow-hidden rounded border border-border/80 bg-background shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
-                {selectedEditorFile ? (
-                  <Editor
-                    key={selectedEditorFile}
-                    height="100%"
-                    language={editorLanguage}
-                    path={selectedEditorFile}
-                    theme="vs-dark"
-                    value={selectedEditorValue}
-                    onChange={(value) => onFileChange(selectedEditorFile, value ?? '')}
-                    onMount={handleEditorMount}
-                    options={{
-                      minimap: { enabled: false },
-                      fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
-                      fontSize: 13,
-                      lineHeight: 20,
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                      automaticLayout: true,
-                      tabSize: 4,
-                      padding: { top: 12, bottom: 12 },
-                    }}
-                  />
+                {workspaceView === 'reference' ? (
+                  selectedEditorFile && challenge ? (
+                    <div className="h-full overflow-auto p-4 bg-background/45">
+                      <CodeSnippet code={selectedReferenceValue} />
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                      No file selected
+                    </div>
+                  )
                 ) : (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                    No file selected
-                  </div>
+                  <>
+                    {selectedEditorFile ? (
+                      <Editor
+                        key={selectedEditorFile}
+                        height="100%"
+                        language={editorLanguage}
+                        path={selectedEditorFile}
+                        theme="vs-dark"
+                        value={selectedEditorValue}
+                        onChange={(value) => onFileChange(selectedEditorFile, value ?? '')}
+                        onMount={handleEditorMount}
+                        options={{
+                          minimap: { enabled: false },
+                          fontFamily: '"IBM Plex Mono", "SFMono-Regular", Consolas, monospace',
+                          fontSize: 13,
+                          lineHeight: 20,
+                          scrollBeyondLastLine: false,
+                          wordWrap: 'on',
+                          automaticLayout: true,
+                          tabSize: 4,
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                        No file selected
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
