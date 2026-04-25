@@ -1,4 +1,8 @@
-export function Nav() {
+interface NavProps {
+  onAuthClick?: () => void;
+}
+
+export function Nav({ onAuthClick }: NavProps) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 py-6 bg-background/80 backdrop-blur-sm border-b border-border/50">
       <div className="max-w-[1440px] mx-auto flex items-center justify-between">
@@ -8,7 +12,10 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-4 md:gap-8">
-          <button className="px-4 md:px-6 py-2 text-sm md:text-base border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-all">
+          <button
+            onClick={onAuthClick}
+            className="px-4 md:px-6 py-2 text-sm md:text-base border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-all"
+          >
             Start Reading →
           </button>
         </div>

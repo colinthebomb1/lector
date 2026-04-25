@@ -1,12 +1,20 @@
+import { useState } from 'react';
 import { Nav } from './components/Nav';
 import { BlinkingCursor } from './components/BlinkingCursor';
 import { Feature } from './components/Feature';
 import { CodeSnippet } from './components/CodeSnippet';
+import { Auth } from './components/Auth';
 
 export default function App() {
+  const [showAuth, setShowAuth] = useState(false);
+
+  if (showAuth) {
+    return <Auth onBackToHome={() => setShowAuth(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Nav />
+      <Nav onAuthClick={() => setShowAuth(true)} />
 
       {/* Hero Section */}
       <section className="min-h-screen flex flex-col items-center justify-center px-4 md:px-8 relative overflow-hidden">
@@ -21,7 +29,10 @@ export default function App() {
             Learn to read code. Learn to think like a debugger.
           </p>
           <div className="flex gap-4 justify-center flex-wrap animate-fadeInUp animate-delay-200">
-            <button className="px-6 md:px-8 py-3 bg-accent text-accent-foreground hover:bg-accent/90 transition-all hover:scale-105">
+            <button
+              onClick={() => setShowAuth(true)}
+              className="px-6 md:px-8 py-3 bg-accent text-accent-foreground hover:bg-accent/90 transition-all hover:scale-105"
+            >
               Start Reading →
             </button>
             <button className="px-6 md:px-8 py-3 border border-foreground/20 text-foreground hover:bg-foreground/10 transition-all hover:border-foreground/40">
