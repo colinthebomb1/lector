@@ -41,6 +41,10 @@ const DIFFICULTY_ORDER: Record<Difficulty, number> = {
   hard: 2,
 };
 
+function formatChallengeNumber(value?: number): string {
+  return value ? `#${value}` : '#-';
+}
+
 function FlameIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -127,26 +131,38 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     [...list].sort((a, b) => {
       const difficultyDelta = DIFFICULTY_ORDER[a.difficulty] - DIFFICULTY_ORDER[b.difficulty];
       if (difficultyDelta !== 0) return difficultyDelta;
-      const minutesDelta = a.estimated_minutes - b.estimated_minutes;
-      if (minutesDelta !== 0) return minutesDelta;
       return a.name.localeCompare(b.name);
     });
 
+  const challengeNumberById = useMemo(() => {
+    const ordered = sortChallenges(challengesWithPreviews);
+    return new Map(ordered.map((challenge, index) => [challenge.id, index + 1]));
+  }, [challengesWithPreviews]);
+
+  const challengesWithNumbers = useMemo(
+    () =>
+      challengesWithPreviews.map((challenge) => ({
+        ...challenge,
+        display_number: challengeNumberById.get(challenge.id),
+      })),
+    [challengeNumberById, challengesWithPreviews],
+  );
+
   const securityChallenges = useMemo(() => {
     if (!showSecurity) return [];
-    let scoped = challengesWithPreviews.filter((c) => c.track === 'security');
+    let scoped = challengesWithNumbers.filter((c) => c.track === 'security');
     if (selectedCategories.size > 0) {
       scoped = scoped.filter((c) => selectedCategories.has(c.category));
     }
     return sortChallenges(scoped);
-  }, [challengesWithPreviews, selectedCategories, showSecurity]);
+  }, [challengesWithNumbers, selectedCategories, showSecurity]);
 
   const codeReviewChallenges = useMemo(() => {
     if (!showCodeReview) return [];
     return sortChallenges(
-      challengesWithPreviews.filter((c) => c.track === 'code-review'),
+      challengesWithNumbers.filter((c) => c.track === 'code-review'),
     );
-  }, [challengesWithPreviews, showCodeReview]);
+  }, [challengesWithNumbers, showCodeReview]);
 
   const totalVisible = securityChallenges.length + codeReviewChallenges.length;
 
@@ -483,6 +499,9 @@ function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowP
   return (
     <div className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors">
       <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground border border-border/70 rounded px-2 py-0.5 flex-shrink-0">
+          {formatChallengeNumber(challenge.display_number)}
+        </span>
         <span className="text-foreground truncate">{challenge.name}</span>
         {isPreview && (
           <span className="text-[10px] uppercase tracking-wider text-cyan-300/90 border border-cyan-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
@@ -495,7 +514,7 @@ function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowP
           </span>
         )}
       </span>
-      <span className="col-span-5 md:col-span-2 text-xs text-muted-foreground">
+      <span className="col-span-5 md:col-span-3 text-xs text-muted-foreground">
         {challenge.category}
       </span>
       <span className="col-span-3 md:col-span-1 justify-self-center">
@@ -504,9 +523,6 @@ function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowP
         >
           {challenge.difficulty}
         </span>
-      </span>
-      <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
-        ~{challenge.estimated_minutes} min
       </span>
       <div className="col-span-4 md:col-span-2 justify-self-end">
         {isPreview ? (

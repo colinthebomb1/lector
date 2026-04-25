@@ -7,6 +7,7 @@ export type Track = 'security' | 'code-review';
 
 export interface ChallengeSummary {
   id: string;
+  display_number?: number;
   name: string;
   track: Track;
   difficulty: Difficulty;

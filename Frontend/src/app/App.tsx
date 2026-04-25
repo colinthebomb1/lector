@@ -94,6 +94,7 @@ export default function App() {
     }
     return (
       <ChallengePlay
+        challenge={activeChallenge}
         challengeId={activeChallenge.id}
         user={user}
         onExit={() => {

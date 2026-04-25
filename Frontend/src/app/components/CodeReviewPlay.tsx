@@ -166,6 +166,11 @@ export function CodeReviewPlay({
               ← Dashboard
             </button>
             <span className="text-muted-foreground">/</span>
+            {challenge.display_number ? (
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground border border-border/70 rounded px-2 py-0.5 flex-shrink-0">
+                #{challenge.display_number}
+              </span>
+            ) : null}
             <span className="text-foreground truncate">{challenge.name}</span>
           </div>
           <div className="flex items-center gap-2">
