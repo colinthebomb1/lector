@@ -37,12 +37,16 @@ def test_invalid_login_rejected():
     assert "Invalid credentials" in r.text
 
 
-def test_malformed_query_shows_sqli_error_message():
-    """A lone quote breaks the interpolated SQL; should not 500 — show a clear login error."""
+def test_lone_quote_login_does_not_500():
+    """Lone quote in username must not 500. Vulnerable app: friendly SQLi message; patched: normal invalid login."""
     s = requests.Session()
     r = s.post(f"{BASE}/login", data={"username": "'", "password": ""})
     assert r.status_code == 200
-    assert "SQLi error" in r.text and "please try again" in r.text
+    text = r.text
+    assert (
+        ("SQLi error" in text and "please try again" in text)
+        or "Invalid credentials" in text
+    )
 
 
 def test_admin_requires_auth():
