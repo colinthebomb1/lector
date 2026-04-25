@@ -2,6 +2,7 @@ from app.models.challenge import Challenge, ChallengeMetadata, Track, Difficulty
 from app.models.submission import (
     Submission,
     SubmissionType,
+    SubmissionPhase,
     GradeResult,
     GradeStatus,
     PatchSubmission,
@@ -19,6 +20,7 @@ __all__ = [
     "Difficulty",
     "Submission",
     "SubmissionType",
+    "SubmissionPhase",
     "GradeResult",
     "GradeStatus",
     "PatchSubmission",
