@@ -3,8 +3,9 @@ import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
 import { ChallengePlay } from './components/ChallengePlay';
+import { CodeReviewPlay } from './components/CodeReviewPlay';
 import { Landing } from './components/Landing';
-import { api, type CurrentUser } from './lib/api';
+import { api, type ChallengeSummary, type CurrentUser } from './lib/api';
 
 type View = 'home' | 'auth' | 'dashboard' | 'profile' | 'play';
 
@@ -12,7 +13,7 @@ export default function App() {
   const [view, setView] = useState<View>('home');
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [bootChecked, setBootChecked] = useState(false);
-  const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
+  const [activeChallenge, setActiveChallenge] = useState<ChallengeSummary | null>(null);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -62,31 +63,52 @@ export default function App() {
         user={user}
         onProfileClick={() => setView('profile')}
         onSelectChallenge={(c) => {
-          setActiveChallengeId(c.id);
+          setActiveChallenge(c);
           setView('play');
         }}
       />
     );
   }
 
-  if (view === 'play' && user && activeChallengeId) {
+  if (view === 'play' && user && activeChallenge) {
+    if (activeChallenge.track === 'code-review') {
+      return (
+        <CodeReviewPlay
+          challenge={activeChallenge}
+          user={user}
+          onExit={() => {
+            setActiveChallenge(null);
+            setView('dashboard');
+          }}
+          onProfileClick={() => {
+            setActiveChallenge(null);
+            setView('profile');
+          }}
+          onLoggedOut={() => {
+            setActiveChallenge(null);
+            setUser(null);
+            setView('home');
+          }}
+        />
+      );
+    }
     return (
       <ChallengePlay
-        challengeId={activeChallengeId}
+        challengeId={activeChallenge.id}
         user={user}
         onExit={() => {
-          setActiveChallengeId(null);
+          setActiveChallenge(null);
           setView('dashboard');
         }}
         onCompleted={() => {
           void refreshUser();
         }}
         onProfileClick={() => {
-          setActiveChallengeId(null);
+          setActiveChallenge(null);
           setView('profile');
         }}
         onLoggedOut={() => {
-          setActiveChallengeId(null);
+          setActiveChallenge(null);
           setUser(null);
           setView('home');
         }}

@@ -6,6 +6,7 @@ import {
   type Difficulty,
   type Track,
 } from '../lib/api';
+import { listCodeReviewChallenges } from '../data/codeReviewChallenges';
 
 interface DashboardProps {
   user: CurrentUser;
@@ -16,28 +17,12 @@ interface DashboardProps {
 /** Code-review items shown in the list before the backend has full content. */
 type DashboardChallenge = ChallengeSummary & { isPreview?: boolean };
 
-const CODE_REVIEW_PREVIEWS: DashboardChallenge[] = [
-  {
-    id: 'preview-division-factory',
-    name: 'Division Factory',
-    track: 'code-review',
-    category: 'code review',
-    difficulty: 'medium',
-    description: '',
-    estimated_minutes: 18,
-    isPreview: true,
-  },
-  {
-    id: 'preview-what-are-you-pointing-at',
-    name: 'What Are You Pointing At?',
-    track: 'code-review',
-    category: 'code review',
-    difficulty: 'hard',
-    description: '',
-    estimated_minutes: 22,
-    isPreview: true,
-  },
-];
+// Code-review challenges are currently driven by frontend-only data (see
+// `src/app/data/codeReviewChallenges.ts`). They show up alongside backend
+// challenges in the dashboard list.
+const CODE_REVIEW_CHALLENGES: DashboardChallenge[] = listCodeReviewChallenges().map(
+  (entry) => entry.summary,
+);
 
 const DIFFICULTY_TONE: Record<Difficulty, string> = {
   easy: 'text-green-400 border-green-400/30 bg-green-400/5',
@@ -130,7 +115,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     for (const c of challenges) {
       byId.set(c.id, c);
     }
-    for (const p of CODE_REVIEW_PREVIEWS) {
+    for (const p of CODE_REVIEW_CHALLENGES) {
       if (!byId.has(p.id)) {
         byId.set(p.id, p);
       }
