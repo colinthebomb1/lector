@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   api,
   type ChallengeSummary,
@@ -45,9 +45,6 @@ const DIFFICULTY_TONE: Record<Difficulty, string> = {
   hard: 'text-red-400 border-red-400/30 bg-red-400/5',
 };
 
-const ALL = '__all__';
-const ALL_TRACK = '__all__';
-
 const TRACK_OPTIONS: { value: Track; label: string }[] = [
   { value: 'security', label: 'Security' },
   { value: 'code-review', label: 'Code review' },
@@ -91,8 +88,8 @@ function UserIcon({ className }: { className?: string }) {
 export function Dashboard({ user, onProfileClick, onSelectChallenge }: DashboardProps) {
   const [challenges, setChallenges] = useState<ChallengeSummary[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [category, setCategory] = useState<string>(ALL);
-  const [trackFilter, setTrackFilter] = useState<string>(ALL_TRACK);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedTracks, setSelectedTracks] = useState<Set<Track>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,11 +114,16 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     };
   }, []);
 
+  const showSecurity = selectedTracks.size === 0 || selectedTracks.has('security');
+  const showCodeReview = selectedTracks.size === 0 || selectedTracks.has('code-review');
+
+  // Category filter only applies to security; clear selections when security is hidden
+  // so the filter pill doesn't keep stale state when the user reopens the security track.
   useEffect(() => {
-    if (trackFilter === 'code-review') {
-      setCategory(ALL);
+    if (!showSecurity && selectedCategories.size > 0) {
+      setSelectedCategories(new Set());
     }
-  }, [trackFilter]);
+  }, [showSecurity, selectedCategories]);
 
   const challengesWithPreviews = useMemo(() => {
     const byId = new Map<string, ChallengeSummary>();
@@ -146,20 +148,20 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     });
 
   const securityChallenges = useMemo(() => {
-    if (trackFilter === 'code-review') return [];
+    if (!showSecurity) return [];
     let scoped = challengesWithPreviews.filter((c) => c.track === 'security');
-    if (category !== ALL) {
-      scoped = scoped.filter((c) => c.category === category);
+    if (selectedCategories.size > 0) {
+      scoped = scoped.filter((c) => selectedCategories.has(c.category));
     }
     return sortChallenges(scoped);
-  }, [challengesWithPreviews, category, trackFilter]);
+  }, [challengesWithPreviews, selectedCategories, showSecurity]);
 
   const codeReviewChallenges = useMemo(() => {
-    if (trackFilter === 'security') return [];
+    if (!showCodeReview) return [];
     return sortChallenges(
       challengesWithPreviews.filter((c) => c.track === 'code-review'),
     );
-  }, [challengesWithPreviews, trackFilter]);
+  }, [challengesWithPreviews, showCodeReview]);
 
   const totalVisible = securityChallenges.length + codeReviewChallenges.length;
 
@@ -177,39 +179,23 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-            {(trackFilter === ALL_TRACK || trackFilter === 'security') && (
-              <label className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground hidden md:inline">Category</span>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
-                >
-                  <option value={ALL}>All categories</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {showSecurity && (
+              <MultiSelectDropdown
+                label="Category"
+                allLabel="All categories"
+                options={categories.map((c) => ({ value: c, label: c }))}
+                selected={selectedCategories}
+                onChange={(next) => setSelectedCategories(next)}
+              />
             )}
 
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground hidden md:inline">Track</span>
-              <select
-                value={trackFilter}
-                onChange={(e) => setTrackFilter(e.target.value)}
-                className="bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
-              >
-                <option value={ALL_TRACK}>All tracks</option>
-                {TRACK_OPTIONS.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <MultiSelectDropdown
+              label="Track"
+              allLabel="All tracks"
+              options={TRACK_OPTIONS}
+              selected={selectedTracks}
+              onChange={(next) => setSelectedTracks(next as Set<Track>)}
+            />
 
             <div
               className="flex items-center gap-2 px-3 py-2 border border-border rounded text-sm"
@@ -245,11 +231,13 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           <h1 className="text-2xl md:text-3xl mb-2">Welcome back, {displayName}.</h1>
           <p className="text-sm text-muted-foreground">
             {totalVisible} challenge{totalVisible === 1 ? '' : 's'}
-            {trackFilter !== ALL_TRACK
-              ? ` · ${TRACK_OPTIONS.find((t) => t.value === trackFilter)?.label ?? trackFilter} track`
+            {selectedTracks.size > 0
+              ? ` · ${[...selectedTracks]
+                  .map((t) => TRACK_OPTIONS.find((o) => o.value === t)?.label ?? t)
+                  .join(', ')} track${selectedTracks.size === 1 ? '' : 's'}`
               : ''}
-            {(trackFilter === ALL_TRACK || trackFilter === 'security') && category !== ALL
-              ? ` · ${category}`
+            {showSecurity && selectedCategories.size > 0
+              ? ` · ${[...selectedCategories].join(', ')}`
               : ''} • {completed.size}{' '}
             completed • {user.total_score ?? 0} points
           </p>
@@ -270,7 +258,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
 
         {!loading && !error && totalVisible > 0 && (
           <div className="flex flex-col gap-6">
-            {trackFilter !== 'code-review' && (
+            {showSecurity && (
               <ChallengeSection
                 title="Security"
                 count={securityChallenges.length}
@@ -280,7 +268,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
                 emptyText="No security challenges match the current filters."
               />
             )}
-            {trackFilter !== 'security' && (
+            {showCodeReview && (
               <ChallengeSection
                 title="Code Review"
                 count={codeReviewChallenges.length}
@@ -293,6 +281,133 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+interface MultiSelectOption {
+  value: string;
+  label: string;
+}
+
+interface MultiSelectDropdownProps {
+  label: string;
+  allLabel: string;
+  options: MultiSelectOption[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}
+
+function MultiSelectDropdown({
+  label,
+  allLabel,
+  options,
+  selected,
+  onChange,
+}: MultiSelectDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (event: MouseEvent) => {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const toggle = (value: string) => {
+    const next = new Set(selected);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    onChange(next);
+  };
+
+  const summary =
+    selected.size === 0
+      ? allLabel
+      : selected.size === 1
+        ? options.find((o) => selected.has(o.value))?.label ?? `${selected.size} selected`
+        : `${selected.size} selected`;
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <label className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground hidden md:inline">{label}</span>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className="bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent transition-colors flex items-center gap-2 min-w-[10rem] justify-between cursor-pointer"
+        >
+          <span className="truncate text-left">{summary}</span>
+          <span
+            className={`text-muted-foreground text-[10px] transition-transform ${open ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          >
+            ▼
+          </span>
+        </button>
+      </label>
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute right-0 mt-2 w-56 max-h-72 overflow-y-auto bg-background border border-border rounded shadow-lg z-50 py-1"
+        >
+          <button
+            type="button"
+            onClick={() => onChange(new Set())}
+            className="w-full text-left px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground hover:bg-foreground/5 cursor-pointer"
+          >
+            {allLabel}
+          </button>
+          <div className="border-t border-border my-1" />
+          {options.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-muted-foreground">No options</p>
+          ) : (
+            options.map((o) => {
+              const checked = selected.has(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="option"
+                  aria-selected={checked}
+                  onClick={() => toggle(o.value)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-foreground/5 text-foreground text-left cursor-pointer"
+                >
+                  <span
+                    className={`w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 text-[10px] ${
+                      checked
+                        ? 'bg-accent border-accent text-accent-foreground'
+                        : 'border-border'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {checked ? '✓' : ''}
+                  </span>
+                  <span className="truncate">{o.label}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }
