@@ -18,7 +18,7 @@ A small Flask app with two interesting routes — the comment form and the previ
 
 ## Tips
 
-- The flag is on the **preview page**, in a JS global named `__INTERNAL_NOTES`. Open DevTools and run `console.log(window.__INTERNAL_NOTES)` once you're there to confirm
+- The flag lives on the preview page as a JavaScript global named `__INTERNAL_NOTES`. You'll need code that runs in the browser to surface it
 - A working payload runs JavaScript when the preview page loads — try `<script>...</script>` or an event-handler attribute on a self-loading element
-- Once your script runs, getting the flag onto the page is a one-liner
+- Once your script runs, dropping the global's value somewhere visible on the page is a one-liner
 - A correct fix typically means letting the templating engine do its default escape, or running input through an HTML sanitizer with an allow-list
