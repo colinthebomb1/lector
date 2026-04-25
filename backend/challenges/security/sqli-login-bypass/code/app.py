@@ -1,3 +1,5 @@
+import sqlite3
+
 from flask import Flask, redirect, render_template_string, request, session
 
 from db import get_user_by_credentials, init_db
@@ -22,7 +24,12 @@ def login():
 
     username = request.form.get("username", "")
     password = request.form.get("password", "")
-    user = get_user_by_credentials(username, password)
+    try:
+        user = get_user_by_credentials(username, password)
+    except sqlite3.Error:
+        return render_template_string(
+            LOGIN_PAGE, error="SQLi error — please try again"
+        )
 
     if user:
         session["logged_in"] = True
