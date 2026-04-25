@@ -1,0 +1,24 @@
+{
+  "id": "jwt-none-alg-bypass",
+  "name": "JWT: none-alg Auth Bypass",
+  "track": "security",
+  "difficulty": "hard",
+  "category": "auth",
+  "description": "Evaluate token verification logic for algorithm confusion and unsafe defaults.",
+  "estimated_minutes": 45,
+  "hint_tiers": [
+    {
+      "tier": 1,
+      "text": "Check whether token algorithm is trusted from unverified header input."
+    },
+    {
+      "tier": 2,
+      "text": "Never accept `none` for signed auth tokens in production flows."
+    },
+    {
+      "tier": 3,
+      "text": "Force a strict expected algorithm and verify signatures with trusted keys."
+    }
+  ],
+  "flag": "FLAG{mock_jwt_none_alg_bypass}"
+}

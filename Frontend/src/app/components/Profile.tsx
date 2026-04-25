@@ -16,12 +16,51 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function humanizeChallengeId(id: string): string {
+  return id
+    .split('-')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
 export function Profile({ user, onBack, onLoggedOut }: ProfileProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const displayName = user.name ?? user.nickname ?? 'reader';
   const initial = displayName.slice(0, 1).toUpperCase();
+  const completedIds = user.challenges_completed ?? [];
+  const completionRows = completedIds.map((entry) => {
+    if (entry.endsWith(':attack')) {
+      const challengeId = entry.slice(0, -':attack'.length);
+      return {
+        key: entry,
+        challengeName: humanizeChallengeId(challengeId),
+        phaseLabel: 'Attack',
+        phaseTone: 'text-green-400 border-green-400/30 bg-green-400/5',
+      };
+    }
+
+    if (entry.endsWith(':defend')) {
+      const challengeId = entry.slice(0, -':defend'.length);
+      return {
+        key: entry,
+        challengeName: humanizeChallengeId(challengeId),
+        phaseLabel: 'Defend',
+        phaseTone: 'text-emerald-300 border-emerald-300/30 bg-emerald-400/5',
+      };
+    }
+
+    const hasAttackRecord = completedIds.includes(`${entry}:attack`);
+    return {
+      key: entry,
+      challengeName: humanizeChallengeId(entry),
+      phaseLabel: hasAttackRecord ? 'Defend' : 'Completed',
+      phaseTone: hasAttackRecord
+        ? 'text-emerald-300 border-emerald-300/30 bg-emerald-400/5'
+        : 'text-blue-300 border-blue-300/30 bg-blue-400/5',
+    };
+  });
 
   const handleLogout = async () => {
     setError(null);
@@ -71,15 +110,22 @@ export function Profile({ user, onBack, onLoggedOut }: ProfileProps) {
           <Stat label="Solved" value={(user.challenges_completed ?? []).length} />
         </div>
 
-        {(user.challenges_completed ?? []).length > 0 && (
+        {completionRows.length > 0 && (
           <div className="mb-10">
             <h2 className="text-sm uppercase tracking-wider text-muted-foreground mb-3">
               Completed challenges
             </h2>
             <div className="border border-border rounded divide-y divide-border">
-              {(user.challenges_completed ?? []).map((id) => (
-                <div key={id} className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                  {id}
+              {completionRows.map((row) => (
+                <div key={row.key} className="px-4 py-2 flex items-center justify-between gap-3">
+                  <span className="font-mono text-xs text-muted-foreground truncate">
+                    {row.challengeName}
+                  </span>
+                  <span
+                    className={`text-[10px] uppercase tracking-wider border rounded px-2 py-0.5 flex-shrink-0 ${row.phaseTone}`}
+                  >
+                    {row.phaseLabel}
+                  </span>
                 </div>
               ))}
             </div>

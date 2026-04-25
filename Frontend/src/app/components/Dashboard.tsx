@@ -14,6 +14,11 @@ const DIFFICULTY_TONE: Record<Difficulty, string> = {
 };
 
 const ALL = '__all__';
+const DIFFICULTY_ORDER: Record<Difficulty, number> = {
+  easy: 0,
+  medium: 1,
+  hard: 2,
+};
 
 function FlameIcon({ className }: { className?: string }) {
   return (
@@ -72,10 +77,16 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
     };
   }, []);
 
-  const filtered = useMemo(
-    () => (category === ALL ? challenges : challenges.filter((c) => c.category === category)),
-    [challenges, category],
-  );
+  const filtered = useMemo(() => {
+    const scoped = category === ALL ? challenges : challenges.filter((c) => c.category === category);
+    return [...scoped].sort((a, b) => {
+      const difficultyDelta = DIFFICULTY_ORDER[a.difficulty] - DIFFICULTY_ORDER[b.difficulty];
+      if (difficultyDelta !== 0) return difficultyDelta;
+      const minutesDelta = a.estimated_minutes - b.estimated_minutes;
+      if (minutesDelta !== 0) return minutesDelta;
+      return a.name.localeCompare(b.name);
+    });
+  }, [challenges, category]);
 
   const completed = new Set(user.challenges_completed ?? []);
   const streak = user.streak ?? 0;
@@ -126,7 +137,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
             <button
               type="button"
               onClick={onProfileClick}
-              className="flex items-center gap-2 px-3 py-2 border border-border rounded text-sm hover:border-accent hover:text-accent transition-colors"
+              className="flex items-center gap-2 px-3 py-2 border border-border rounded text-sm hover:border-accent hover:text-accent hover:bg-foreground/5 transition-colors cursor-pointer"
               title="Profile"
             >
               <UserIcon className="w-4 h-4" />
@@ -167,10 +178,7 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
                 key={c.id}
                 className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors"
               >
-                <span className="col-span-2 md:col-span-1 font-mono text-xs text-muted-foreground">
-                  {c.id}
-                </span>
-                <span className="col-span-10 md:col-span-5 flex items-center gap-2 min-w-0">
+                <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
                   <span className="text-foreground truncate">{c.name}</span>
                   {done && (
                     <span className="text-[10px] uppercase tracking-wider text-green-400 border border-green-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
@@ -178,10 +186,10 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
                     </span>
                   )}
                 </span>
-                <span className="col-span-4 md:col-span-2 text-xs text-muted-foreground">
+                <span className="col-span-5 md:col-span-2 text-xs text-muted-foreground">
                   {c.category}
                 </span>
-                <span className="col-span-3 md:col-span-1 justify-self-start md:justify-self-end">
+                <span className="col-span-3 md:col-span-1 justify-self-center">
                   <span
                     className={`text-[10px] uppercase tracking-wider border rounded px-2 py-1 ${DIFFICULTY_TONE[c.difficulty]}`}
                   >
@@ -189,13 +197,13 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
                   </span>
                 </span>
                 <span className="hidden md:inline col-span-1 text-xs text-muted-foreground justify-self-end">
-                  ~{c.estimated_minutes}m
+                  ~{c.estimated_minutes} minutes
                 </span>
-                <div className="col-span-5 md:col-span-2 justify-self-end">
+                <div className="col-span-4 md:col-span-2 justify-self-end">
                   <button
                     type="button"
                     onClick={() => onSelectChallenge?.(c)}
-                    className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors"
+                    className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded transition-colors cursor-pointer"
                   >
                     {done ? 'Replay →' : 'Start →'}
                   </button>
