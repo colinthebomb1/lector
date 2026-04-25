@@ -23,6 +23,7 @@ export interface CodeReviewChallenge {
   original_code: string;
   default_code: string;
   hints: string[];
+  aiHintRubric: string[];
   solutionCheck: (code: string) => SolutionVerdict;
 }
 
@@ -74,14 +75,19 @@ const CHALLENGES: CodeReviewChallenge[] = [
       estimated_minutes: 18,
     },
     prompt:
-      'createDivider returns a closure that divides by a captured divisor. Find the two issues (zero divisor, non-numeric input) and patch the function so both call sites behave safely.',
+      'createDivider returns a closure that captures a divisor and applies it later. Review the implementation and look for potential improvements.',
     language: 'javascript',
     original_code: DIVISION_FACTORY_SOURCE,
     default_code: DIVISION_FACTORY_SOURCE,
     hints: [
-      'Think about what happens when divisor is 0. JavaScript will not throw — it returns Infinity / -Infinity / NaN.',
-      'Strings divided by numbers coerce to NaN. The function should reject obviously bad inputs early.',
-      'A safe implementation: validate divisor up front (throw on 0/non-finite), and validate value inside the inner function (e.g. throw on NaN).',
+      'Trace the two sample calls and focus on why JavaScript allows both of them to run without throwing.',
+      'There are two different validation points here: one when the divider is created, and one when it is used later.',
+      'Ask what assumptions must be true for division to produce a meaningful result. Guard those assumptions explicitly, and surface invalid input with a real error or other clear failure path.',
+    ],
+    aiHintRubric: [
+      'Creation-time validation: reject divisors that should never produce a meaningful result, including zero and other non-finite values.',
+      'Use-time validation: reject values passed into the returned divider when they are not valid numeric inputs.',
+      'Failure mode: make invalid input fail explicitly instead of silently returning NaN or Infinity.',
     ],
     solutionCheck: (code) => {
       const guardsZero =
@@ -145,6 +151,11 @@ const CHALLENGES: CodeReviewChallenge[] = [
       'The caller still uses `greeting` after make_greeting returns. Where does `buffer` actually live?',
       'sprintf has no length awareness. A long `name` will scribble past the end of `buffer` long before any pointer issue matters.',
       'A correct fix typically uses snprintf into a heap-allocated buffer (malloc/strdup) — or a caller-provided buffer — so the lifetime extends past the function and the size is bounded.',
+    ],
+    aiHintRubric: [
+      'Returned data must remain valid after the function returns, so the implementation cannot hand back a pointer to expired stack storage.',
+      'Writes into the greeting buffer must be length-bounded so long names do not overflow it.',
+      'The final design should make ownership or buffer responsibility clear to the caller.',
     ],
     solutionCheck: (code) => {
       const usesSnprintf = /\bsnprintf\s*\(/.test(code);
