@@ -12,6 +12,7 @@ import {
 import { CodeSnippet } from './CodeSnippet';
 
 interface ChallengePlayProps {
+  challenge: ChallengeSummary;
   challengeId: string;
   user: CurrentUser;
   onExit: () => void;
@@ -33,6 +34,7 @@ const MIN_PANE_PERCENT = 20;
 const MAX_PANE_PERCENT = 80;
 
 export function ChallengePlay({
+  challenge: challengeSummary,
   challengeId,
   user,
   onExit,
@@ -373,7 +375,11 @@ export function ChallengePlay({
               ← Dashboard
             </button>
             <span className="text-muted-foreground">/</span>
-            <span className="font-mono text-xs text-muted-foreground truncate">{challengeId}</span>
+            {challengeSummary.display_number ? (
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground border border-border/70 rounded px-2 py-0.5 flex-shrink-0">
+                #{challengeSummary.display_number}
+              </span>
+            ) : null}
             <span className="text-foreground truncate">{challenge?.name ?? 'Loading...'}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -933,10 +939,6 @@ function OverviewStage({
                 <InfoChip label="Track" value={challenge?.track ?? '—'} />
                 <InfoChip label="Difficulty" value={challenge?.difficulty ?? '—'} />
                 <InfoChip label="Category" value={challenge?.category ?? '—'} />
-                <InfoChip
-                  label="Estimate"
-                  value={challenge ? `~${challenge.estimated_minutes}m` : '—'}
-                />
               </div>
 
               <div>
