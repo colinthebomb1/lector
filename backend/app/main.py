@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import connect_db, close_db
+from app.database import connect_db, close_db, is_db_connected
 from app.services.challenge_loader import load_challenges
 from app.routers import auth, challenges, submissions, gemma, leaderboard
 
@@ -44,4 +44,8 @@ app.include_router(leaderboard.router)
 @app.get("/api/health")
 async def health_check():
     settings = get_settings()
-    return {"status": "ok", "app": settings.app_name}
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "database": "connected" if is_db_connected() else "unavailable",
+    }
