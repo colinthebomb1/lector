@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, type ChallengeDetail, type CurrentUser } from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 
@@ -546,14 +546,14 @@ function ScenarioBody({ text }: { text: string }) {
         if (para.startsWith('## ')) {
           return (
             <h3 key={i} className="text-sm uppercase tracking-wider text-foreground mt-4">
-              {para.replace(/^##\s+/, '')}
+              {renderInline(para.replace(/^##\s+/, ''))}
             </h3>
           );
         }
         if (para.startsWith('# ')) {
           return (
             <h2 key={i} className="text-base text-foreground mt-4">
-              {para.replace(/^#\s+/, '')}
+              {renderInline(para.replace(/^#\s+/, ''))}
             </h2>
           );
         }
@@ -564,17 +564,51 @@ function ScenarioBody({ text }: { text: string }) {
                 .split('\n')
                 .filter((l) => /^[-*]\s+/.test(l))
                 .map((l, j) => (
-                  <li key={j}>{l.replace(/^[-*]\s+/, '')}</li>
+                  <li key={j}>{renderInline(l.replace(/^[-*]\s+/, ''))}</li>
                 ))}
             </ul>
           );
         }
         return (
           <p key={i} className="text-sm leading-relaxed">
-            {para}
+            {renderInline(para)}
           </p>
         );
       })}
     </div>
   );
+}
+
+// Minimal inline markdown: **bold**, *italic*, `code`. Order matters —
+// bold must be matched before italic, otherwise '*' from '**' gets eaten first.
+const INLINE_MD_RE =
+  /(\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|`[^`\n]+`)/g;
+
+function renderInline(text: string): ReactNode {
+  if (!text) return null;
+  const parts = text.split(INLINE_MD_RE);
+  return parts.map((part, i) => {
+    if (!part) return null;
+    if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
+      return (
+        <strong key={i} className="text-foreground font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code
+          key={i}
+          className="font-mono text-[0.85em] px-1 py-0.5 rounded bg-foreground/10 text-foreground"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
