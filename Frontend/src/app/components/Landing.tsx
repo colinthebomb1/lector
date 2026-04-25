@@ -218,14 +218,14 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                 onClick={onPrimaryClick}
                 className="group relative px-7 py-3.5 bg-accent text-accent-foreground font-medium overflow-hidden transition-all hover:scale-[1.02] animate-glow-pulse"
               >
-                <span className="relative z-10">{user ? 'Open dashboard →' : 'Begin review →'}</span>
+                <span className="relative z-10">{user ? 'Open Dashboard →' : 'Begin Review →'}</span>
                 <span className="absolute inset-0 bg-gradient-to-r from-cyan-300 to-accent opacity-0 group-hover:opacity-100 transition-opacity"></span>
               </button>
               <a
                 href="#how-it-works"
                 className="px-7 py-3.5 border border-foreground/20 text-foreground hover:bg-foreground/5 hover:border-foreground/40 transition-all"
               >
-                See how grading works
+                See How Grading Works
               </a>
             </div>
 
@@ -465,10 +465,10 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                   </div>
                   <div className="flex gap-2 mt-auto">
                     <button className="flex-1 px-3 py-2 text-xs border border-foreground/20 text-foreground/80 hover:bg-foreground/5 rounded">
-                      Re-read
+                      Re-Read
                     </button>
                     <button className="flex-1 px-3 py-2 text-xs bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20 rounded">
-                      Try again
+                      Try Again
                     </button>
                   </div>
                 </div>
@@ -543,13 +543,13 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               onClick={onPrimaryClick}
               className="group relative px-8 py-4 bg-accent text-accent-foreground font-medium overflow-hidden hover:scale-[1.02] transition-all animate-glow-pulse"
             >
-              <span className="relative z-10">{user ? 'Open dashboard →' : 'Create a session →'}</span>
+              <span className="relative z-10">{user ? 'Open Dashboard →' : 'Create a Session →'}</span>
             </button>
             <a
               href="#how-it-works"
               className="px-8 py-4 border border-foreground/20 text-foreground hover:bg-foreground/5 hover:border-foreground/40 transition-all"
             >
-              Read the pipeline
+              Read the Pipeline
             </a>
           </div>
         </div>
