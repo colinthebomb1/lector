@@ -208,8 +208,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
 
             <p className="text-lg md:text-2xl text-foreground/80 max-w-2xl leading-snug animate-fadeInUp animate-delay-200">
               Reading code is the most-used skill in software engineering — and{' '}
-              <span className="text-foreground/50 line-through">nowhere</span>{' '}
-              <span className="text-accent glow-text-accent">now here</span> teaches it deliberately.
+              <span className="text-foreground/50 line-through">now</span>
+              <span className="text-green-400">here</span> teaches it deliberately.
             </p>
 
             <p className="text-sm md:text-base text-muted-foreground max-w-xl leading-relaxed animate-fadeInUp animate-delay-300">
