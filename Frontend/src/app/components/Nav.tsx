@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 interface NavProps {
   onAuthClick?: () => void;
   authenticated?: boolean;
@@ -10,6 +12,62 @@ const NAV_LINKS = [
 ];
 
 export function Nav({ onAuthClick, authenticated = false }: NavProps) {
+  const [activeHref, setActiveHref] = useState<string>('#top');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const sections = NAV_LINKS
+      .map((link) => document.getElementById(link.href.slice(1)))
+      .filter((section): section is HTMLElement => Boolean(section));
+
+    if (sections.length === 0) return;
+
+    let frame = 0;
+
+    const updateActiveSection = () => {
+      const marker = 140;
+      let nextActive = NAV_LINKS[0]?.href ?? '#top';
+
+      for (let index = 0; index < sections.length; index += 1) {
+        const section = sections[index];
+        const sectionTop = section.getBoundingClientRect().top;
+        if (sectionTop - marker <= 0) {
+          nextActive = `#${section.id}`;
+        }
+      }
+
+      setActiveHref(nextActive);
+    };
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateActiveSection();
+      });
+    };
+
+    const syncFromHash = () => {
+      if (!window.location.hash) return;
+      setActiveHref(window.location.hash);
+    };
+
+    updateActiveSection();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    document.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('hashchange', syncFromHash);
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      document.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('hashchange', syncFromHash);
+    };
+  }, []);
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 py-4 bg-background/70 backdrop-blur-md border-b border-border/50">
       <div className="max-w-[1440px] mx-auto flex items-center justify-between gap-6">
@@ -28,7 +86,12 @@ export function Nav({ onAuthClick, authenticated = false }: NavProps) {
             <a
               key={link.href}
               href={link.href}
-              className="relative hover:text-foreground transition-colors after:absolute after:left-0 after:-bottom-1 after:w-full after:h-px after:bg-accent after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform"
+              aria-current={activeHref === link.href ? 'page' : undefined}
+              className={`relative transition-colors after:absolute after:left-0 after:-bottom-1 after:w-full after:h-px after:bg-accent after:origin-left after:transition-transform ${
+                activeHref === link.href
+                  ? 'text-accent glow-text-accent after:scale-x-100'
+                  : 'hover:text-foreground after:scale-x-0 hover:after:scale-x-100'
+              }`}
             >
               {link.label}
             </a>

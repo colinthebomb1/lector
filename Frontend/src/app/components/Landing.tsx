@@ -207,15 +207,10 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             </h1>
 
             <p className="text-lg md:text-2xl text-foreground/80 max-w-2xl leading-snug animate-fadeInUp animate-delay-200">
-              Reading code is the most-used skill in software engineering — and{' '}
+              Reviewing code for bugs is the most-used skill in software engineering
+              {' — and '}
               <span className="text-foreground/50 line-through">now</span>
               <span className="text-green-400">here</span> teaches it deliberately.
-            </p>
-
-            <p className="text-sm md:text-base text-muted-foreground max-w-xl leading-relaxed animate-fadeInUp animate-delay-300">
-              Two tracks. One spine. Read a codebase, find what's wrong, propose a fix — and we verify
-              by <span className="text-foreground">actually running the consequence</span>. Does the
-              exploit still work? Do the tests still pass?
             </p>
 
             <div className="flex gap-3 md:gap-4 flex-wrap animate-fadeInUp animate-delay-400">
@@ -305,7 +300,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             </h2>
             <p className="text-base md:text-lg text-muted-foreground max-w-2xl">
               Both tracks lead with reading comprehension. Only after you understand the file do you get
-              to attack, defend, or refactor it.
+              to attack it, defend it, or audit it with intent.
             </p>
           </div>
 
@@ -328,12 +323,12 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             <TrackCard
               badge="Code Review"
               title="Audit → Fix"
-              punchline="Review code like a real PR: Improve exception handling, identify thin or missing test coverage. Name the gaps, then land a fix the grader accepts."
+              punchline="Review code like a real PR: spot risky assumptions, weak boundaries, and missing safeguards. Name the gaps, then land a fix the challenge accepts."
               steps={[
-                'Read the file and summarize what it does',
-                'Mark code quality issues',
-                'Propose changes',
-                'Get instant feedback',
+                'Read the file and understand the behavior',
+                'Identify code quality or correctness issues',
+                'Propose and implement changes',
+                'Get challenge feedback',
               ]}
               accentClass="text-cyan-300"
               borderClass="border-cyan-400/30"
@@ -352,8 +347,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             <span className="text-xs uppercase tracking-[0.3em] text-accent mb-4">// pipeline</span>
             <h2 className="text-3xl md:text-5xl mb-5 max-w-3xl">From <span className="text-accent">read</span> to <span className="text-accent">verified</span> in under 25 seconds.</h2>
             <p className="text-base md:text-lg text-muted-foreground max-w-2xl">
-              Every submission walks the same path. The grader doesn't care <em>why</em> you think
-              something is wrong — it cares about consequence.
+              Every submission moves from reading to action to feedback. The platform doesn't stop at
+              opinions about code — it pushes you toward concrete consequences and defensible fixes.
             </p>
           </div>
 
@@ -362,12 +357,12 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <PipelineStep
                 index="01"
                 title="Read"
-                body="Open the file in the editor. Write a 1–2 sentence summary of what it does. The reading check compares it to the reference rubric — you can't move on until you actually understand the code."
+                body="Open the file in the editor and build a mental model of what it does before you touch anything."
               />
               <PipelineStep
                 index="02"
                 title="Identify"
-                body="Click line numbers to drop annotations. Pick a bug class (off-by-one, race condition, SQLi, IDOR…). Explain why in your own words."
+                body="Name the risky assumptions, weak boundaries, or vulnerable flows that matter in this challenge."
               />
               <PipelineStep
                 index="03"
@@ -378,7 +373,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <PipelineStep
                 index="04"
                 title="Verify"
-                body="A fresh container spins up, your patch is applied, the original exploit is replayed and the test suite re-runs. Pass = solved. Fail = useful, specific feedback."
+                body="Security challenges replay the exploit in a fresh environment. Code review challenges run challenge-specific checks and return focused feedback on what still needs work."
               />
             </div>
 
@@ -387,11 +382,11 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="border border-border bg-background/60 rounded p-4">
                   <div className="text-[10px] uppercase tracking-widest text-muted-foreground">grader</div>
-                  <div className="mt-2 text-sm text-foreground/80">Replays the original consequence in a sandboxed Docker container. Same spine for both tracks.</div>
+                  <div className="mt-2 text-sm text-foreground/80">Security challenges replay the original consequence in a sandboxed Docker container. Code review challenges use challenge-specific checks in the editor flow.</div>
                 </div>
                 <div className="border border-border bg-background/60 rounded p-4">
                   <div className="text-[10px] uppercase tracking-widest text-muted-foreground">coach</div>
-                  <div className="mt-2 text-sm text-foreground/80">Reading checks, adaptive hints, rubric-graded explanations, and post-solve writeups.</div>
+                  <div className="mt-2 text-sm text-foreground/80">Adaptive hints and targeted feedback that help you understand what to inspect next and why a fix passes or fails.</div>
                 </div>
               </div>
             </div>
@@ -415,18 +410,18 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               actually goes.
             </p>
             <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-              After every solve we replay an <span className="text-accent">expert reading path</span>:
-              imports first, identify the public surface, trace user input, check boundaries. The
-              meta-skill of <em>how to look</em> is what we're really teaching.
+              The meta-skill of <em>how to look</em> is what we're really teaching: identify the public
+              surface, trace user input, inspect boundaries, and notice the assumptions the code is
+              quietly making.
             </p>
             <div className="mt-2 grid grid-cols-2 gap-3 max-w-md">
               <div className="border border-border bg-card/50 rounded p-4">
                 <div className="text-2xl text-accent font-mono">1.</div>
-                <div className="mt-1 text-sm text-foreground/80">Reading summary</div>
+                <div className="mt-1 text-sm text-foreground/80">Read closely</div>
               </div>
               <div className="border border-border bg-card/50 rounded p-4">
                 <div className="text-2xl text-accent font-mono">2.</div>
-                <div className="mt-1 text-sm text-foreground/80">Annotate &amp; fix</div>
+                <div className="mt-1 text-sm text-foreground/80">Identify &amp; fix</div>
               </div>
               <div className="border border-border bg-card/50 rounded p-4">
                 <div className="text-2xl text-accent font-mono">3.</div>
@@ -457,12 +452,12 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                   />
                 </div>
                 <div className="p-5 flex flex-col gap-4">
-                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">your summary</div>
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">your read</div>
                   <div className="bg-background border border-border rounded p-3 text-sm text-foreground/90 leading-relaxed">
                     Moves <span className="text-accent">amount</span> from one account to another if
                     funds are sufficient.
                   </div>
-                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2">reading check</div>
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2">guided feedback</div>
                   <div className="border border-yellow-400/30 bg-yellow-400/5 rounded p-3 text-sm text-yellow-200/90 leading-relaxed">
                     Almost — you didn't mention what happens with{' '}
                     <span className="text-yellow-300">concurrent</span> transfers. Re-read lines 4–6
@@ -495,8 +490,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               </h2>
               <p className="text-base md:text-lg text-muted-foreground leading-relaxed mb-4">
                 AI coding agents have the same problem humans do — they write a fix and have no
-                objective way to know if it actually works. Lector ships the grader as an MCP tool
-                so any agent can verify its own change before committing.
+                objective way to know if it actually works. Lector is being shaped with that workflow
+                in mind, so agents can verify changes against the same challenge logic humans use.
               </p>
               <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
                 Did the security patch block the exploit? Did the bug fix make the failing test
