@@ -9,6 +9,8 @@ import sys
 import os
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.services.attack_session import (
@@ -20,6 +22,11 @@ from app.services.attack_session import (
     _sessions,
 )
 from app.services.gemma import generate_attack_hint, _local_fallback_response
+
+
+def _has_gemma_key() -> bool:
+    from app.config import get_settings
+    return bool(get_settings().gemma_api_key)
 
 
 def test_payload_tracking():
@@ -117,59 +124,39 @@ def test_local_fallback_sqli_attempts():
     print(f"  PASS: SQLi-attempts hint: \"{result['hint'][:80]}...\"")
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(not _has_gemma_key(), reason="LECTOR_GEMMA_API_KEY not set")
 async def test_gemma_api():
     """Test the actual Gemma API call with the real API key."""
     from app.config import get_settings
     settings = get_settings()
 
-    if not settings.gemma_api_key:
-        print("  SKIP: No LECTOR_GEMMA_API_KEY set, skipping live API test")
-        return False
-
-    print(f"  INFO: Gemma API key found (ends with ...{settings.gemma_api_key[-4:]})")
-    print(f"  INFO: Model: {settings.gemma_model}")
-
     import httpx
-    print("  INFO: Making direct API call to verify key works...")
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
-                params={"key": settings.gemma_api_key},
-                json={"contents": [{"parts": [{"text": "Say hello in one word."}]}]},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                print(f"  PASS: API key valid, response: \"{text.strip()[:50]}\"")
-                return True
-            else:
-                print(f"  FAIL: API returned status {resp.status_code}: {resp.text[:200]}")
-                return False
-    except Exception as e:
-        print(f"  FAIL: API call error: {e}")
-        return False
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
+            params={"key": settings.gemma_api_key},
+            json={"contents": [{"parts": [{"text": "Say hello in one word."}]}]},
+        )
+        assert resp.status_code == 200
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        assert len(text.strip()) > 0
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(not _has_gemma_key(), reason="LECTOR_GEMMA_API_KEY not set")
 async def test_generate_attack_hint_live():
     """Test generate_attack_hint with the real Gemma API (bypasses DB caching)."""
     from app.config import get_settings
     settings = get_settings()
-    if not settings.gemma_api_key:
-        print("  SKIP: No API key, skipping live hint generation test")
-        return
 
     import httpx
     import json
 
-    payloads = [
-        {"path": "login", "method": "POST", "form_data": {"username": "admin", "password": "password"}, "response_status": 200},
-        {"path": "login", "method": "POST", "form_data": {"username": "admin", "password": "admin123"}, "response_status": 200},
-    ]
-
-    payloads_summary = ""
-    for i, p in enumerate(payloads, 1):
-        payloads_summary += f"  {i}. POST /{p['path']} → {p['response_status']} | fields: {p['form_data']}\n"
+    payloads_summary = (
+        "  1. POST /login → 200 | fields: {'username': 'admin', 'password': 'password'}\n"
+        "  2. POST /login → 200 | fields: {'username': 'admin', 'password': 'admin123'}\n"
+    )
 
     prompt = (
         "You are a cybersecurity tutor helping a student learn to exploit a web vulnerability.\n"
@@ -186,54 +173,16 @@ async def test_generate_attack_hint_live():
         "Respond as JSON: {\"hint\": \"<your hint>\", \"analysis\": \"<brief analysis of their attempts>\"}"
     )
 
-    print("  INFO: Calling Gemma for hint generation...")
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
-                params={"key": settings.gemma_api_key},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            try:
-                result = json.loads(text)
-                print(f"  PASS: Got structured hint response:")
-                print(f"        Hint: \"{result.get('hint', 'N/A')[:120]}\"")
-                print(f"        Analysis: \"{result.get('analysis', 'N/A')[:120]}\"")
-            except json.JSONDecodeError:
-                print(f"  WARN: Got plain text response (not JSON): \"{text[:150]}\"")
-    except Exception as e:
-        print(f"  FAIL: Hint generation error: {e}")
-
-
-def main():
-    print("\n=== AI Hints Feature Tests ===\n")
-
-    print("[1] Payload tracking (in-memory)")
-    test_payload_tracking()
-
-    print("\n[2] Local fallback — no attempts")
-    test_local_fallback_no_attempts()
-
-    print("\n[3] Local fallback — generic attempts")
-    test_local_fallback_generic_attempts()
-
-    print("\n[4] Local fallback — SQLi attempts")
-    test_local_fallback_sqli_attempts()
-
-    print("\n[5] Gemma API key validation")
-    api_works = asyncio.run(test_gemma_api())
-
-    if api_works:
-        print("\n[6] Live hint generation via Gemma")
-        asyncio.run(test_generate_attack_hint_live())
-    else:
-        print("\n[6] SKIP: Live hint generation (API key issue)")
-
-    print("\n=== All tests complete ===\n")
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemma_model}:generateContent",
+            params={"key": settings.gemma_api_key},
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+        )
+        resp.raise_for_status()
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        assert len(text) > 0
 
 
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__, "-v"])
