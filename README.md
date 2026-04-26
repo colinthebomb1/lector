@@ -600,7 +600,7 @@ GitHub Actions workflows under `.github/workflows/`:
 
 ## LA Hacks Submission
 
-Lector is built for **LA Hacks** under the **Light the Way (Education)** track. It addresses a specific gap in security and software engineering education: the comprehension step that gets skipped between "see the challenge" and "fire the payload." Lector makes that step a first-class, gradeable phase that gates the rest of the workspace.
+Lector is built for **LA Hacks** under the **Light the Way (Education)** track. It addresses a specific gap in security and software engineering education: the comprehension step that gets skipped between "open the codebase" and "fix the bug." Lector makes that step a gradeable phase that gates the rest of the workspace.
 
 The platform combines:
 
