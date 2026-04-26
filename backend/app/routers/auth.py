@@ -4,7 +4,7 @@ from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, HTTPException, Request, Response
 from passlib.hash import pbkdf2_sha256
 from pydantic import BaseModel, Field, field_validator
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import AutoReconnect, DuplicateKeyError, PyMongoError
 
 from app.config import get_settings
 from app.database import get_db
@@ -230,10 +230,19 @@ async def logout(response: Response):
 @router.get("/me")
 async def get_current_user(request: Request):
     """Get the current user from session cookie."""
-    user = await _get_user_from_request(request)
+    try:
+        user = await _get_user_from_request(request)
+    except AutoReconnect:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection is reconnecting. Please try again.",
+        ) from None
     if not user:
         return {"authenticated": False}
-    streak = await current_streak(get_db(), user["session_id"])
+    try:
+        streak = await current_streak(get_db(), user["session_id"])
+    except PyMongoError:
+        streak = 0
     return {
         "authenticated": True,
         "nickname": user.get("nickname", "anonymous"),
@@ -257,8 +266,13 @@ async def _get_user_from_request(request: Request) -> dict | None:
 
 async def require_session(request: Request) -> dict:
     """Dependency: require a valid session, return the user doc."""
-    user = await _get_user_from_request(request)
+    try:
+        user = await _get_user_from_request(request)
+    except AutoReconnect:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection is reconnecting. Please try again.",
+        ) from None
     if not user:
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="No active session")
     return user
