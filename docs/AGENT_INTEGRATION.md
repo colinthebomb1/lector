@@ -5,7 +5,7 @@ Lector exposes its existing grader as both:
 - an MCP server for agent tool use
 - a tiny CLI wrapper for local verification demos
 
-This repo also includes a ready-to-use MCP config at [mcp.json](/Users/tunguyen/Documents/GitHub/lector/Untitled/lector/mcp.json:1).
+This repo also includes a ready-to-use `mcp.json` at the repo root.
 
 ## MCP server
 
@@ -27,10 +27,10 @@ Available tools:
 The repo root includes an `mcp.json` entry named `lector` that launches:
 
 ```bash
-/Users/tunguyen/Documents/GitHub/lector/Untitled/lector/backend/.venv/bin/python -m app.mcp_server
+./.venv/bin/python -m app.mcp_server
 ```
 
-with `cwd` set to the `backend/` directory so challenge loading and env-file resolution work as expected.
+with `cwd` set to `./backend` so challenge loading and env-file resolution work as expected without hardcoding a local machine path.
 
 ## CLI wrapper
 
