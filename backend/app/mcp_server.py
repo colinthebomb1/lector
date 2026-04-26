@@ -102,7 +102,7 @@ def list_lector_challenges(track: Track | None = None) -> list[MCPChallengeSumma
 
 
 @mcp.tool()
-async def cyberleet_verify(challenge_id: str, patch: str) -> VerifyResult:
+async def lector_verify(challenge_id: str, patch: str) -> VerifyResult:
     """
     Grade a proposed patch for a Lector challenge.
 

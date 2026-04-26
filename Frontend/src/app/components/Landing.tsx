@@ -29,15 +29,15 @@ const BUG_TAGS = [
 ];
 
 const GRADER_LINES = [
-  { text: '$ lector verify --challenge sqli-login --patch fix.diff', tone: 'prompt' },
-  { text: 'spawning fresh container ............... ok  (3.2s)', tone: 'log' },
-  { text: 'applying patch ......................... ok', tone: 'log' },
-  { text: 'restarting app ......................... ok  (1.8s)', tone: 'log' },
-  { text: 'running functional/tests ............... 12 / 12 passed', tone: 'log' },
-  { text: 'replaying original exploit ............. blocked', tone: 'log' },
+  { text: 'POST /api/submissions/patch', tone: 'prompt' },
+  { text: 'challenge_id ........................... sqli-login-bypass', tone: 'log' },
+  { text: 'patch .................................. fix.diff', tone: 'log' },
+  { text: 'status ................................. running', tone: 'log' },
   { text: '', tone: 'log' },
-  { text: '✓ exploit neutralized — patch verified.', tone: 'success' },
-  { text: '  graded in 21.4s · session sealed.', tone: 'muted' },
+  { text: 'status ................................. passed', tone: 'success' },
+  { text: 'message ................................ Exploit neutralized! Patch is correct.', tone: 'success' },
+  { text: 'functional_passed ...................... true', tone: 'muted' },
+  { text: 'track_test_passed ...................... true', tone: 'muted' },
 ];
 
 function useTypedLines(lines: typeof GRADER_LINES, charDelay = 14, lineDelay = 220) {
@@ -78,7 +78,7 @@ function GraderTerminal() {
             <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
             <span className="w-2.5 h-2.5 rounded-full bg-green-500/70"></span>
           </div>
-          <div className="text-[11px] text-muted-foreground tracking-widest uppercase">grader · session #4f2a</div>
+          <div className="text-[11px] text-muted-foreground tracking-widest uppercase">patch grader · defend phase</div>
           <div className="text-[11px] text-accent">live</div>
         </div>
         <div className="relative p-5 font-mono text-[12.5px] leading-relaxed min-h-[280px] overflow-hidden">
@@ -361,10 +361,10 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             </h1>
 
             <p className="text-lg md:text-2xl text-foreground/80 max-w-2xl leading-snug animate-fadeInUp animate-delay-200">
-              Reviewing code for bugs is the most-used skill in software engineering
+              Reviewing code for bugs and vulnerabilities is the most-used skill in software engineering
               {' — and '}
               <span className="text-foreground/50 line-through">nowhere</span>
-              <span className="text-green-400 ml-2">here</span> teaches it deliberately.
+              <span className="text-green-400 ml-2">here</span> we teach it deliberately.
             </p>
 
             <div className="flex gap-3 md:gap-4 flex-wrap animate-fadeInUp animate-delay-400">
@@ -513,15 +513,20 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
                 title="Read"
                 body="Open the file in the editor and build a mental model of what it does before you touch anything."
               />
-              <PipelineStep
-                index="02"
-                title="Identify"
-                body="Name the risky assumptions, weak boundaries, or vulnerable flows that matter in this challenge."
-              />
-              <PipelineStep
-                index="03"
-                title="Fix"
-                body="Edit the source directly. Either ship a unified diff or replace the whole file."
+	              <PipelineStep
+	                index="02"
+	                title="Identify"
+	                body="Name the risky assumptions, weak boundaries, or vulnerable flows that matter in this challenge."
+	              />
+	              <PipelineStep
+	                index="2.5"
+	                title="Exploit (security track)"
+	                body="Trigger the bug or vulnerability yourself so you can see the real consequence before fixing it."
+	              />
+	              <PipelineStep
+	                index="03"
+	                title="Fix"
+	                body="Edit the source directly. Either ship a unified diff or replace the whole file."
                 code={`- cursor.execute(f"SELECT * FROM users WHERE name='{u}' AND pw='{p}'")\n+ cursor.execute(\n+     "SELECT * FROM users WHERE name=? AND pw=?",\n+     (u, p),\n+ )`}
               />
               <PipelineStep
@@ -662,17 +667,18 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
               <div className="relative bg-[#0B0D13] border border-accent/20 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-[#14171F] text-xs text-muted-foreground font-mono">
                   <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-                  agent · mcp · lector.verify
+                  agent · mcp · lector_verify
                 </div>
                 <div className="p-5 font-mono text-[12.5px] leading-relaxed">
                   <div className="text-foreground/60">// agent is editing auth/login.py</div>
-                  <div className="mt-2 text-foreground">→ <span className="text-accent">lector.verify</span>(challenge=<span className="text-yellow-200">"sqli-login"</span>, patch=diff)</div>
-                  <div className="mt-2 text-red-400/80">  ✗ vulnerability still present</div>
-                  <div className="text-muted-foreground">    exploit response: 200 OK · admin flag returned</div>
+                  <div className="mt-2 text-foreground">→ <span className="text-accent">lector_verify</span>(challenge_id=<span className="text-yellow-200">"sqli-login-bypass"</span>, patch=diff)</div>
+                  <div className="mt-2 text-red-400/80">  status: failed</div>
+                  <div className="text-muted-foreground">  message: Vulnerability still present — the original exploit still works.</div>
                   <div className="mt-3 text-foreground/60">// agent rewrites the patch</div>
-                  <div className="mt-2 text-foreground">→ <span className="text-accent">lector.verify</span>(challenge=<span className="text-yellow-200">"sqli-login"</span>, patch=diff_v2)</div>
-                  <div className="mt-2 text-accent glow-text-accent">  ✓ exploit neutralized · 12 / 12 tests pass</div>
-                  <div className="mt-3 text-muted-foreground">    graded in 18.7s · ready to commit.</div>
+                  <div className="mt-2 text-foreground">→ <span className="text-accent">lector_verify</span>(challenge_id=<span className="text-yellow-200">"sqli-login-bypass"</span>, patch=diff_v2)</div>
+                  <div className="mt-2 text-accent glow-text-accent">  status: passed</div>
+                  <div className="text-muted-foreground">  message: Exploit neutralized! Patch is correct.</div>
+                  <div className="mt-3 text-muted-foreground">  functional_passed: true · track_test_passed: true</div>
                 </div>
               </div>
             </div>
