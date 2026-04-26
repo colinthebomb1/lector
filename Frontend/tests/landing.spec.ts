@@ -5,6 +5,6 @@ test('landing page renders lector hero content', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Lector' })).toBeVisible();
   await expect(
-    page.getByText(/most-used skill in software engineering/i),
+    page.getByText(/one of the most-used skills? in software engineering/i),
   ).toBeVisible();
 });
