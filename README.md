@@ -219,10 +219,10 @@ The MCP server reuses the same `grade_submission` and `challenge_loader` modules
 │   └── requirements.txt
 │
 ├── docs/AGENT_INTEGRATION.md        # MCP + CLI integration guide
-├── .local-dev/dev.sh                # One-shot dev stack runner
+├── scripts/dev.sh                   # One-shot dev stack runner
 ├── .github/workflows/               # CI: backend tests, frontend checks
 ├── mcp.json                         # Repo-root MCP server registration
-└── README.MD
+└── README.md
 ```
 
 ---
@@ -231,7 +231,7 @@ The MCP server reuses the same `grade_submission` and `challenge_loader` modules
 
 ### Prerequisites
 
-- **Docker** — required for both MongoDB (via `dev.sh`) and challenge containers
+- **Docker** — required for challenge containers and for local MongoDB if you are not using Atlas
 - **Python 3.11+** with `venv`
 - **Node.js 18+** and `npm`
 - A **Google AI Studio API key** (optional — without one, the local Gemma fallback kicks in and reading checks/hints still work, just deterministically)
@@ -239,17 +239,17 @@ The MCP server reuses the same `grade_submission` and `challenge_loader` modules
 
 ### Quick start: one-shot dev script
 
-The repo ships a helper that brings up MongoDB (in Docker), the FastAPI backend, and the Vite frontend in one command:
+The repo ships a helper that brings up the FastAPI backend and Vite frontend in one command. If `LECTOR_MONGO_URL` points at MongoDB Atlas, the script uses Atlas. Otherwise, it starts a local MongoDB container.
 
 ```bash
 # From repo root
-./.local-dev/dev.sh
+./scripts/dev.sh
 ```
 
 It will:
 
-1. Start (or reuse) a `lector-local-mongo` Docker container bound to `127.0.0.1:27017`
-2. Wait for Mongo to respond to `ping`
+1. Use the configured MongoDB Atlas URL from `backend/.env` or the shell when `LECTOR_MONGO_URL` is remote
+2. Otherwise, start (or reuse) a `lector-local-mongo` Docker container bound to `127.0.0.1:27017`
 3. Launch the backend with `--reload` on `localhost:8000`
 4. Launch the frontend with `--strictPort` on port `80` (uses `sudo` only for the bind if needed)
 5. Wait for both health checks before printing URLs
@@ -257,10 +257,10 @@ It will:
 The script defaults to a public host of `lector.work` (matching the CORS allowlist and `vite.config.ts`'s `allowedHosts`). Override with environment variables:
 
 ```bash
-PUBLIC_HOST=localhost FRONTEND_PORT=5173 ./.local-dev/dev.sh
+PUBLIC_HOST=localhost FRONTEND_PORT=5173 ./scripts/dev.sh
 ```
 
-Press Ctrl+C to stop the backend and frontend. The MongoDB container stays up between runs so cached Gemma responses and submission history survive.
+Press Ctrl+C to stop the backend and frontend. The local MongoDB container, when used, stays up between runs so cached Gemma responses and submission history survive.
 
 ### Manual setup
 
@@ -287,6 +287,8 @@ By default the Vite config binds `0.0.0.0:80` with `strictPort: true` and only a
 
 **MongoDB**
 
+For the shared app, use MongoDB Atlas by setting `LECTOR_MONGO_URL` in `backend/.env`. For fully local development, run MongoDB in Docker:
+
 ```bash
 docker run -d --name lector-local-mongo -p 127.0.0.1:27017:27017 mongo:7
 ```
@@ -301,7 +303,7 @@ All backend settings use the `LECTOR_` prefix and can be set in `backend/.env` o
 | ---------------------------- | -------------------------------- | ------------------------------------------------------ |
 | `LECTOR_APP_NAME`            | `Lector`                         | Display name in `/api/health`                          |
 | `LECTOR_DEBUG`               | `True`                           | Pydantic-settings debug flag                           |
-| `LECTOR_MONGO_URL`           | `mongodb://localhost:27017`      | Mongo connection string                                |
+| `LECTOR_MONGO_URL`           | `mongodb://localhost:27017`      | MongoDB connection string. Use a MongoDB Atlas `mongodb+srv://...` URL for the shared hosted database |
 | `LECTOR_MONGO_DB`            | `lector`                         | Database name                                          |
 | `LECTOR_GEMMA_API_KEY`       | `""`                             | Google AI Studio key. Empty/placeholder → local fallback |
 | `LECTOR_GEMMA_MODEL`         | `gemma-3-27b-it`                 | Gemma model identifier                                 |
@@ -318,7 +320,7 @@ The Gemma key is treated as "not configured" if it matches any of: `""`, `"your-
 Example `backend/.env`:
 
 ```env
-LECTOR_MONGO_URL=mongodb://localhost:27017
+LECTOR_MONGO_URL=mongodb+srv://<user>:<password>@<cluster-host>/<database>?retryWrites=true&w=majority
 LECTOR_MONGO_DB=lector
 LECTOR_GEMMA_API_KEY=your-google-ai-studio-key
 LECTOR_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
