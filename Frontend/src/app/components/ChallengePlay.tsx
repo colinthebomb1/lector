@@ -6,6 +6,7 @@ import {
   type ChallengeDetail,
   type CurrentUser,
   type PatchResult,
+  type SummaryResult,
   type SubmissionHistory,
   type SubmissionRecord,
 } from '../lib/api';
@@ -702,6 +703,7 @@ export function ChallengePlay({
             payloads={recentPayloads}
             onOpenWorkspace={() => void handleLaunchWorkspace()}
             onOpenDefendWorkspace={handleOpenDefendWorkspace}
+            onHistoryRefresh={refreshOverviewData}
             opening={status.kind === 'starting'}
             error={status.kind === 'error' ? status.message : null}
           />
@@ -874,6 +876,7 @@ interface OverviewStageProps {
   payloads: AttackPayloadRecord[];
   onOpenWorkspace: () => void;
   onOpenDefendWorkspace: () => void;
+  onHistoryRefresh: () => Promise<void>;
   opening: boolean;
   error: string | null;
 }
@@ -884,15 +887,59 @@ function OverviewStage({
   payloads,
   onOpenWorkspace,
   onOpenDefendWorkspace,
+  onHistoryRefresh,
   opening,
   error,
 }: OverviewStageProps) {
   const progress = history?.progress;
   const recentSubmissions = history?.submissions.slice(0, 5) ?? [];
+  const [summaryDraft, setSummaryDraft] = useState('');
+  const [submittingSummary, setSubmittingSummary] = useState(false);
+  const [summaryFeedback, setSummaryFeedback] = useState<SummaryResult | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [activeOverviewFile, setActiveOverviewFile] = useState<string | null>(null);
+  const summaryInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const readingCheckRef = useRef<HTMLDivElement | null>(null);
+  const overviewFileNames = useMemo(() => Object.keys(challenge?.code_files ?? {}), [challenge]);
   const derivedScore =
     (progress?.attack_captured ? 50 : 0) +
     (progress?.defend_passed ? 100 : 0);
   const displayScore = Math.max(progress?.total_score_awarded ?? 0, derivedScore);
+  const readingPassed = Boolean(progress?.summary_passed || summaryFeedback?.passed);
+  const selectedOverviewFile =
+    activeOverviewFile && overviewFileNames.includes(activeOverviewFile)
+      ? activeOverviewFile
+      : overviewFileNames[0];
+
+  useEffect(() => {
+    setSummaryDraft('');
+    setSummaryFeedback(null);
+    setSummaryError(null);
+    setActiveOverviewFile(Object.keys(challenge?.code_files ?? {})[0] ?? null);
+  }, [challenge?.id]);
+
+  const handleLockedWorkspaceClick = useCallback(() => {
+    readingCheckRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => summaryInputRef.current?.focus(), 250);
+  }, []);
+
+  const handleSubmitSummary = useCallback(async () => {
+    if (!challenge || !summaryDraft.trim()) return;
+    setSubmittingSummary(true);
+    setSummaryError(null);
+    try {
+      const result = await api.submitSummary(challenge.id, summaryDraft.trim());
+      setSummaryFeedback(result);
+      if (result.passed) {
+        setSummaryDraft('');
+      }
+      await onHistoryRefresh();
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : 'Failed to submit summary.');
+    } finally {
+      setSubmittingSummary(false);
+    }
+  }, [challenge, onHistoryRefresh, summaryDraft]);
 
   return (
     <div className="h-full overflow-auto bg-background">
@@ -911,20 +958,28 @@ function OverviewStage({
               <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={onOpenWorkspace}
+                  onClick={readingPassed ? onOpenWorkspace : handleLockedWorkspaceClick}
                   disabled={opening || !challenge}
+                  title={readingPassed ? 'Open the attack workspace' : 'Pass the reading check first'}
                   className="px-4 py-2 text-xs uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  {opening ? 'Opening…' : 'Open Attack Workspace'}
+                  {opening ? 'Opening…' : readingPassed ? 'Open Attack Workspace' : 'Pass Reading Check'}
                 </button>
-                <button
-                  type="button"
-                  onClick={onOpenDefendWorkspace}
-                  disabled={!challenge?.has_defend_phase}
-                  className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Open Defend Workspace
-                </button>
+                {readingPassed && (
+                  <button
+                    type="button"
+                    onClick={onOpenDefendWorkspace}
+                    disabled={!challenge?.has_defend_phase}
+                    title={
+                      challenge?.has_defend_phase
+                        ? 'Open the defend workspace'
+                        : 'This challenge has no defend phase'
+                    }
+                    className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Open Defend Workspace
+                  </button>
+                )}
               </div>
             </div>
 
@@ -946,6 +1001,108 @@ function OverviewStage({
                   Scenario
                 </p>
                 <ScenarioBody text={challenge?.scenario ?? ''} />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Source Code
+                  </p>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {overviewFileNames.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setActiveOverviewFile(name)}
+                        className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                          selectedOverviewFile === name
+                            ? 'border-accent text-accent bg-accent/10'
+                            : 'border-border text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="max-h-[520px] overflow-auto">
+                  {selectedOverviewFile && challenge ? (
+                    <CodeSnippet code={challenge.code_files[selectedOverviewFile] ?? ''} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No source files loaded.</p>
+                  )}
+                </div>
+              </div>
+
+              <div ref={readingCheckRef}>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                  Reading Check
+                </p>
+
+                {readingPassed ? (
+                  <div className="border border-emerald-500/30 bg-emerald-500/5 rounded px-4 py-3 text-sm text-emerald-300">
+                    Reading summary passed. Workspaces unlocked.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Before opening the workspace, write a short summary of what this code does:
+                      its <span className="text-foreground">purpose</span>, the
+                      <span className="text-foreground"> main flow</span>, and the
+                      <span className="text-foreground"> public surface</span> exposed to users.
+                      Enter at least <span className="text-foreground">30 characters</span> to submit.
+                    </p>
+                    <textarea
+                      ref={summaryInputRef}
+                      value={summaryDraft}
+                      onChange={(event) => setSummaryDraft(event.target.value)}
+                      disabled={submittingSummary || !challenge}
+                      placeholder="Describe what the code does in your own words..."
+                      rows={6}
+                      className="w-full rounded border border-border/80 bg-background/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-accent disabled:opacity-50 resize-none font-mono"
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-muted-foreground">
+                        {summaryDraft.trim().length} / 30 chars minimum
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitSummary()}
+                        disabled={submittingSummary || summaryDraft.trim().length < 30 || !challenge}
+                        className="px-4 py-2 text-xs uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {submittingSummary ? 'Checking...' : 'Submit Summary'}
+                      </button>
+                    </div>
+
+                    {summaryError && (
+                      <div className="text-sm text-red-400 border border-red-400/30 bg-red-400/5 rounded px-3 py-2">
+                        {summaryError}
+                      </div>
+                    )}
+
+                    {summaryFeedback && !summaryFeedback.passed && (
+                      <div className="border border-amber-400/30 bg-amber-400/5 rounded px-3 py-3 space-y-2">
+                        <p className="text-sm text-amber-200">
+                          Not quite there yet.{' '}
+                          {summaryFeedback.feedback || 'Take another pass through the code and try again.'}
+                        </p>
+                        {summaryFeedback.missing_points.length > 0 && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-amber-300/80 mb-1">
+                              Missing points
+                            </p>
+                            <ul className="text-xs text-amber-100/90 list-disc list-inside space-y-0.5">
+                              {summaryFeedback.missing_points.map((point, index) => (
+                                <li key={`${point}-${index}`}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -1488,26 +1645,26 @@ function ProgressTile({ label, value }: { label: string; value: string }) {
 }
 
 function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
-  const message = submission.result
-    ? displaySubmissionMessage(submission.result)
-    : `Submitted ${submission.submission_type}.`;
+  const message = displaySubmissionMessage(submission);
+  const label = displaySubmissionLabel(submission);
+  const status = submission.result?.status ?? 'pending';
 
   return (
     <div className="px-4 py-3 bg-background/65">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-[0.18em] text-foreground font-semibold">
-          {submission.phase}
+          {label}
         </p>
         <span
           className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1 rounded border ${
-            submission.result?.status === 'passed'
+            status === 'passed'
               ? 'text-green-400 border-green-400/30 bg-green-400/5'
-              : submission.result?.status === 'failed'
+              : status === 'failed'
               ? 'text-red-400 border-red-400/30 bg-red-400/5'
               : 'text-yellow-400 border-yellow-400/30 bg-yellow-400/5'
           }`}
         >
-          {submission.result?.status ?? 'pending'}
+          {status}
         </span>
       </div>
       <p className="text-sm text-foreground mt-2">
@@ -1521,8 +1678,22 @@ function SubmissionRow({ submission }: { submission: SubmissionRecord }) {
   );
 }
 
-function displaySubmissionMessage(result: SubmissionRecord['result']) {
-  if (!result) return 'Submission recorded.';
+function displaySubmissionLabel(submission: SubmissionRecord) {
+  if (submission.submission_type === 'summary') return 'Reading Check';
+  if (submission.submission_type === 'flag') return 'Flag Capture';
+  if (submission.submission_type === 'patch') return 'Patch';
+  if (submission.submission_type === 'annotation') return 'Code Review';
+  return submission.phase;
+}
+
+function displaySubmissionMessage(submission: SubmissionRecord) {
+  const result = submission.result;
+  if (submission.submission_type === 'summary') {
+    if (result?.status === 'passed') return 'Reading summary accepted. Workspaces unlocked.';
+    if (result?.status === 'failed') return 'Reading summary needs a little more detail.';
+    return 'Reading summary submitted.';
+  }
+  if (!result) return `Submitted ${submission.submission_type}.`;
   if (result.functional_passed === false) {
     return 'Functional check failed. The app behavior changed; review your patch and try again.';
   }

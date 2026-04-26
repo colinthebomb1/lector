@@ -59,6 +59,12 @@ export interface CodeReviewSubmissionResult {
   score_awarded: number;
 }
 
+export interface SummaryResult {
+  passed: boolean;
+  feedback: string;
+  missing_points: string[];
+}
+
 export interface PatchResult {
   status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
   message?: string;
@@ -203,6 +209,11 @@ export const api = {
     request<AttackPayloadHistory>(`/api/attack/${encodeURIComponent(id)}/payloads`),
   submissionHistory: (id: string) =>
     request<SubmissionHistory>(`/api/submissions/history/${encodeURIComponent(id)}`),
+  submitSummary: (id: string, summary: string) =>
+    request<SummaryResult>('/api/submissions/summary', {
+      method: 'POST',
+      body: JSON.stringify({ challenge_id: id, summary }),
+    }),
   submitPatch: (id: string, patch: string) =>
     request<PatchResult>('/api/submissions/patch', {
       method: 'POST',
