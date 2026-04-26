@@ -14,6 +14,7 @@ from app.models import (
 )
 from app.services.challenge_loader import get_challenge
 from app.services.grader import grade_submission
+from app.services.code_review_grader import grade_code_review_submission
 from app.services.gemma import check_reading_comprehension, grade_explanation
 from app.routers.auth import require_session
 
@@ -113,16 +114,11 @@ async def submit_patch(body: PatchSubmission, user: dict = Depends(require_sessi
 async def submit_code_review(
     body: CodeReviewSubmission, user: dict = Depends(require_session)
 ):
-    """Record a client-graded code-review submission and award points on first pass.
-
-    Code-review challenges are graded entirely on the client (their data
-    lives in the frontend bundle), so the server trusts the verdict the
-    client reports. Points are only awarded once per challenge per user
-    via an atomic `$addToSet` guard, so resubmits do not double-score.
-    """
-    grade = GradeResult(
-        status=GradeStatus.PASSED if body.passed else GradeStatus.FAILED,
-        message=body.message,
+    """Run backend verification for a code-review submission and persist the verdict."""
+    grade = await grade_code_review_submission(
+        body.challenge_id,
+        body.language,
+        body.code,
     )
 
     submission = Submission(
@@ -139,7 +135,7 @@ async def submit_code_review(
         db = get_db()
         await db.submissions.insert_one(submission.model_dump())
 
-        if body.passed:
+        if grade.status == GradeStatus.PASSED:
             update = await db.users.update_one(
                 {
                     "session_id": user["session_id"],
@@ -172,8 +168,10 @@ async def submit_code_review(
             )
 
     return {
-        "passed": body.passed,
-        "message": body.message,
+        "passed": grade.status == GradeStatus.PASSED,
+        "message": grade.message,
+        "status": grade.status,
+        "output": grade.output,
         "score_awarded": score_awarded,
     }
 

@@ -3,8 +3,9 @@ import type { ChallengeSummary } from '../lib/api';
 /**
  * Static data for the code-review track.
  *
- * Code-review challenges are not (yet) backed by the FastAPI/grader pipeline,
- * so the editor, hints, and verdict are evaluated entirely on the client.
+ * Code-review challenges still keep their hints and first-pass rubric checks
+ * in the frontend bundle, but final submission verification also runs on the
+ * backend so syntax/runtime failures do not slip through.
  *
  * Each challenge can be solved in multiple languages. The user picks a
  * language inside the challenge view; that selection swaps the source code,
@@ -26,6 +27,8 @@ export interface CodeReviewVariant {
   hints: string[];
   /** Pure rubric items handed to the AI hint backend so it can grade progress. */
   aiHintRubric: string[];
+  /** Additional challenge-specific checks run after the main verdict passes. */
+  submissionTests?: CodeReviewTest[];
   /** Pure function that decides whether the user's edit fixes the issue. */
   solutionCheck: (code: string) => SolutionVerdict;
 }
@@ -40,6 +43,11 @@ export interface CodeReviewChallenge {
 export interface SolutionVerdict {
   passed: boolean;
   message: string;
+}
+
+export interface CodeReviewTest {
+  description: string;
+  run: (code: string) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +195,24 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Use-time validation: reject values passed into the returned divider when they are not valid numeric inputs.',
           'Failure mode: make invalid input fail explicitly instead of silently returning NaN or Infinity.',
         ],
+        submissionTests: [
+          {
+            description:
+              'Construction should reject coercion-prone divisors like strings, not just literal zero.',
+            run: (code) =>
+              /typeof\s+divisor\s*!==\s*['"]number['"]/.test(code) ||
+              /typeof\s+divisor\s*===\s*['"]number['"]/.test(code) ||
+              /Number\.isFinite\s*\(\s*divisor\s*\)/.test(code),
+          },
+          {
+            description:
+              'Calls should reject coercion-prone values like null or [] before division happens.',
+            run: (code) =>
+              /typeof\s+value\s*!==\s*['"]number['"]/.test(code) ||
+              /typeof\s+value\s*===\s*['"]number['"]/.test(code) ||
+              /Number\.isFinite\s*\(\s*value\s*\)/.test(code),
+          },
+        ],
         solutionCheck: (code) => {
           const guardsZero =
             /\bdivisor\s*===\s*0\b/.test(code) ||
@@ -245,6 +271,21 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Creation-time validation: reject divisors that cannot produce a meaningful result (zero, False, None, non-numeric).',
           'Use-time validation: reject `value` arguments that are not numeric.',
           'Failure mode: raise an explicit, intentional exception (ValueError / TypeError) instead of letting the implementation detail (ZeroDivisionError, TypeError from /) leak.',
+        ],
+        submissionTests: [
+          {
+            description:
+              'Construction should reject Python bool divisors like False, not treat them as ordinary integers.',
+            run: (code) =>
+              /isinstance\s*\(\s*divisor\s*,\s*bool\s*\)/.test(code) ||
+              /type\s*\(\s*divisor\s*\)\s+is\s+bool/.test(code) ||
+              /type\s*\(\s*divisor\s*\)\s+==\s+bool/.test(code),
+          },
+          {
+            description:
+              'Invalid inputs should raise an intentional exception rather than relying on division to explode.',
+            run: (code) => /\braise\s+(ValueError|TypeError)\b/.test(code),
+          },
         ],
         solutionCheck: (code) => {
           const guardsZero =
@@ -305,6 +346,24 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Creation-time validation: reject divisors that produce no meaningful result (zero, NaN, infinite).',
           'Use-time validation: reject inputs that are not finite numbers.',
           'Failure mode: throw an explicit unchecked exception instead of returning Infinity/NaN.',
+        ],
+        submissionTests: [
+          {
+            description:
+              'Construction should reject NaN and infinite divisors explicitly, not just literal zero.',
+            run: (code) =>
+              /Double\.isFinite\s*\(\s*divisor\s*\)/.test(code) ||
+              /Double\.isNaN\s*\(\s*divisor\s*\)/.test(code) ||
+              /Double\.isInfinite\s*\(\s*divisor\s*\)/.test(code),
+          },
+          {
+            description:
+              'Calls should reject non-finite inputs before Java silently propagates NaN or Infinity.',
+            run: (code) =>
+              /Double\.isFinite\s*\(\s*value\s*\)/.test(code) ||
+              /Double\.isNaN\s*\(\s*value\s*\)/.test(code) ||
+              /Double\.isInfinite\s*\(\s*value\s*\)/.test(code),
+          },
         ],
         solutionCheck: (code) => {
           const guardsZero =
@@ -378,6 +437,23 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Writes into the greeting buffer must be length-bounded so long names do not overflow it.',
           'The final design should make ownership or buffer responsibility clear to the caller.',
         ],
+        submissionTests: [
+          {
+            description:
+              'The implementation should stop using sprintf so writes are bounded by the destination size.',
+            run: (code) => !/\bsprintf\s*\(/.test(code) && /\bsnprintf\s*\(/.test(code),
+          },
+          {
+            description:
+              'The returned pointer must not alias stack storage that disappears when the function returns.',
+            run: (code) =>
+              /\bmalloc\s*\(/.test(code) ||
+              /\bstrdup\s*\(/.test(code) ||
+              /\bcalloc\s*\(/.test(code) ||
+              /\bstatic\s+char\b/.test(code) ||
+              /\bmake_greeting\s*\(\s*[^)]*char\s*\*[^)]*,\s*[^)]+\)/.test(code),
+          },
+        ],
         solutionCheck: (code) => {
           const usesSnprintf = /\bsnprintf\s*\(/.test(code);
           const stillSprintf = /\bsprintf\s*\(/.test(code);
@@ -435,6 +511,21 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Prefer an immutable return type (String) when callers do not need to mutate the result.',
           'If a mutable type is required, return a fresh instance per call rather than handing back an internal field.',
         ],
+        submissionTests: [
+          {
+            description:
+              'The method should stop returning the shared field directly so callers do not alias the same mutable buffer.',
+            run: (code) => !/return\s+shared\s*;/.test(code),
+          },
+          {
+            description:
+              'Each call should build and return a fresh value, ideally an immutable String.',
+            run: (code) =>
+              /public\s+String\s+makeGreeting\s*\(/.test(code) ||
+              /return\s+new\s+StringBuilder/.test(code) ||
+              /String\.format\s*\(/.test(code),
+          },
+        ],
         solutionCheck: (code) => {
           const stillReturnsField = /return\s+shared\s*;/.test(code);
           const referencesName = /\bname\b/.test(code);
@@ -491,6 +582,21 @@ const CHALLENGES: CodeReviewChallenge[] = [
           'Each call must produce its own, independent value — no shared module-level mutable state, no mutable default argument.',
           'Long inputs should not silently truncate; either size the result to the input or surface a real error.',
           'A clean implementation typically just returns f"Hello, {name}!" or builds and returns a fresh bytes object each call.',
+        ],
+        submissionTests: [
+          {
+            description:
+              'The implementation should stop depending on shared module-level buffer state.',
+            run: (code) => !/\b_buffer\b/.test(code),
+          },
+          {
+            description:
+              'The function should not use a mutable default argument that is shared across calls.',
+            run: (code) =>
+              !/def\s+make_greeting\s*\([^)]*=\s*_buffer/.test(code) &&
+              !/def\s+make_greeting\s*\([^)]*=\s*bytearray\s*\(/.test(code) &&
+              !/def\s+make_greeting\s*\([^)]*=\s*\[\s*\]/.test(code),
+          },
         ],
         solutionCheck: (code) => {
           const usesSharedBuffer = /\b_buffer\b/.test(code);
