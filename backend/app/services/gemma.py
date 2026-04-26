@@ -39,14 +39,22 @@ async def check_reading_comprehension(
     Returns { passed: bool, feedback: str, missing_points: list[str] }
     """
     prompt = (
-        "You are grading a student's summary of a code file.\n\n"
+        "You are a supportive cybersecurity tutor speaking directly to the learner.\n"
+        "Grade whether their reading summary shows they understand the code before attacking it.\n\n"
         f"Reference summary:\n{reference_summary}\n\n"
         f"Student summary:\n{user_summary}\n\n"
-        "Does the student identify: (1) the purpose of the code, "
-        "(2) the main flow, (3) the public surface/API?\n"
+        "Check only these three reading-comprehension points:\n"
+        "1. purpose: what the application or code is for\n"
+        "2. main_flow: how a normal request or user action moves through the code\n"
+        "3. public_surface: the route, endpoint, input, command, or UI action exposed to users\n\n"
+        "Feedback rules:\n"
+        "- Address the learner as \"you\"; never say \"the student\".\n"
+        "- Be brief, kind, and concrete.\n"
+        "- Do not reveal exploit payloads, fixes, or details from the reference summary that the learner did not mention.\n"
+        "- For missing_points, use only these exact labels: purpose, main_flow, public_surface.\n\n"
         "Respond as JSON: {\"passed\": bool, \"feedback\": str, \"missing_points\": [str]}"
     )
-    return await _gemma_request(prompt)
+    return _shape_reading_result(await _gemma_request(prompt))
 
 
 async def get_hint(challenge_id: str, tier: int, user_context: str = "") -> str:
@@ -258,12 +266,58 @@ async def _gemma_request(prompt: str) -> dict:
     return result
 
 
+_READING_MISSING_POINT_LABELS = {
+    "purpose": "Purpose: what the code is for.",
+    "main_flow": "Main flow: how a normal request or user action moves through the code.",
+    "public_surface": "Public surface: what users can interact with.",
+}
+
+
+def _shape_reading_result(result: dict) -> dict:
+    """Keep reading-check responses learner-facing and non-spoilery."""
+    passed = bool(result.get("passed"))
+    raw_missing = result.get("missing_points", [])
+    if not isinstance(raw_missing, list):
+        raw_missing = []
+
+    missing_keys: list[str] = []
+    for point in raw_missing:
+        normalized = str(point).lower().replace("-", "_").replace(" ", "_")
+        if "purpose" in normalized:
+            key = "purpose"
+        elif "flow" in normalized:
+            key = "main_flow"
+        elif "surface" in normalized or "api" in normalized or "route" in normalized or "endpoint" in normalized:
+            key = "public_surface"
+        else:
+            continue
+        if key not in missing_keys:
+            missing_keys.append(key)
+
+    if not missing_keys and not passed:
+        missing_keys = ["purpose", "main_flow", "public_surface"]
+
+    return {
+        "passed": passed,
+        "feedback": (
+            "Nice work. Your summary shows enough understanding to start exploring the workspace."
+            if passed
+            else "You are on the right track. Add a little more about what the code is for, how a normal request moves through it, and what users can interact with."
+        ),
+        "missing_points": [
+            _READING_MISSING_POINT_LABELS[key]
+            for key in missing_keys
+            if key in _READING_MISSING_POINT_LABELS
+        ],
+    }
+
+
 def _local_fallback_response(prompt: str) -> dict:
     """Deterministic local fallback that preserves the product gates."""
     if "Reference summary:" in prompt and "Student summary:" in prompt:
         reference = _extract_section(prompt, "Reference summary:\n", "\n\nStudent summary:")
         student = _extract_section(
-            prompt, "Student summary:\n", "\n\nDoes the student identify:"
+            prompt, "Student summary:\n", "\n\nCheck only these three reading-comprehension points:"
         )
         reference_terms = {word for word in _tokenize(reference) if len(word) > 4}
         student_terms = set(_tokenize(student))
@@ -272,14 +326,14 @@ def _local_fallback_response(prompt: str) -> dict:
         if len(overlap) >= min(3, len(reference_terms) or 3):
             return {
                 "passed": True,
-                "feedback": "Local fallback accepted the summary based on keyword overlap.",
+                "feedback": "Nice work. Your summary shows enough understanding to start exploring the workspace.",
                 "missing_points": [],
             }
 
         return {
             "passed": False,
-            "feedback": "Gemma API key not configured. Local fallback requires more overlap with the reference summary.",
-            "missing_points": sorted(reference_terms - student_terms)[:3],
+            "feedback": "You are on the right track. Add a little more about what the code is for, how a normal request moves through it, and what users can interact with.",
+            "missing_points": ["purpose", "main_flow", "public_surface"],
         }
 
     if "cybersecurity tutor" in prompt and "Student's recent payloads:" in prompt:
