@@ -56,6 +56,8 @@ export interface CodeReviewAiHint {
 export interface CodeReviewSubmissionResult {
   passed: boolean;
   message: string;
+  status?: 'passed' | 'failed' | 'error';
+  output?: string;
   score_awarded: number;
 }
 

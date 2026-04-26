@@ -149,14 +149,25 @@ export function CodeReviewPlay({
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     const result = variant.solutionCheck(code);
-    setVerdict(result);
-    setGrading(false);
+    if (!result.passed) {
+      setVerdict(result);
+      setGrading(false);
+      return;
+    }
 
-    if (!result.passed) return;
+    const failedTest = variant.submissionTests?.find((test) => !test.run(code));
+    if (failedTest) {
+      setVerdict({
+        passed: false,
+        message: `Test failed: ${failedTest.description}`,
+      });
+      setGrading(false);
+      return;
+    }
 
     // Persist the pass to the backend so the user actually gets credit.
-    // Resubmits are atomically guarded server-side so points are awarded
-    // at most once per challenge.
+    // The backend now does the final compile/runtime verification, so
+    // the pass modal should only appear after this request succeeds.
     try {
       const persisted = await api.submitCodeReview({
         challenge_id: reviewChallenge.summary.id,
@@ -165,12 +176,24 @@ export function CodeReviewPlay({
         passed: true,
         message: result.message,
       });
+      setVerdict({
+        passed: persisted.passed,
+        message: persisted.message,
+      });
       setScoreAwarded(persisted.score_awarded ?? 0);
-      onCompleted?.();
+      if (persisted.passed) {
+        onCompleted?.();
+      }
     } catch (err) {
-      setPersistError(
-        err instanceof Error ? err.message : 'Could not save your score.',
-      );
+      const message =
+        err instanceof Error ? err.message : 'Could not validate your submission.';
+      setPersistError(message);
+      setVerdict({
+        passed: false,
+        message,
+      });
+    } finally {
+      setGrading(false);
     }
   }, [code, onCompleted, reviewChallenge, variant]);
 
@@ -394,7 +417,8 @@ export function CodeReviewPlay({
                   Your Patch
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Edit freely — submission runs locally against the rubric.
+                  Edit freely — submission checks the rubric locally, then verifies
+                  compilation and behavior on the backend.
                 </p>
                 <div className="flex items-center gap-4 flex-wrap mt-2">
                   {reviewChallenge.variants.length > 1 && (
