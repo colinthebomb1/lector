@@ -450,7 +450,7 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
           <div className="flex flex-col items-center text-center mb-14 md:mb-20">
             <span className="text-xs uppercase tracking-[0.3em] text-accent mb-4">// two tracks</span>
             <h2 className="text-3xl md:text-5xl mb-5 max-w-3xl leading-tight">
-              Same grader. Two ways to <span className="text-accent">read with intent</span>.
+              Two tracks. One habit: <span className="text-accent">read with intent</span>.
             </h2>
             <p className="text-base md:text-lg text-muted-foreground max-w-2xl">
               Both tracks lead with reading comprehension. Only after you understand the file do you get
