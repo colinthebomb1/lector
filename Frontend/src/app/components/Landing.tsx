@@ -108,6 +108,160 @@ function GraderTerminal() {
   );
 }
 
+const FUNC_OPEN = 'function renderComment(el, text) {';
+const COMMENT_LINE = '  // user-controlled input — never trust raw HTML';
+const FUNC_CLOSE = '}';
+const VULN_LINE = '  el.innerHTML = text;';
+const FIX_LINE = '  el.innerHTML = sanitize(text);';
+
+type CodeBlockProps = {
+  lines: string[];
+  highlightLine: number;
+  highlightTone: 'bad' | 'good';
+  annotation?: string;
+};
+
+function CodeBlock({
+  lines,
+  highlightLine,
+  highlightTone,
+  annotation,
+}: CodeBlockProps) {
+  const containerClass =
+    highlightTone === 'bad'
+      ? 'border-red-400/45 bg-background/40 shadow-[0_0_28px_-10px_rgba(239,68,68,0.55)]'
+      : 'border-emerald-400/30 bg-background/40';
+  return (
+    <div className={`rounded border overflow-hidden ${containerClass}`}>
+      {lines.map((text, i) => {
+        const lineNo = i + 1;
+        const isHighlight = lineNo === highlightLine;
+        const bg = isHighlight
+          ? highlightTone === 'bad'
+            ? 'bg-red-500/15'
+            : 'bg-emerald-400/10'
+          : '';
+        let fg = 'text-foreground/85';
+        if (isHighlight) {
+          fg =
+            highlightTone === 'bad'
+              ? 'text-red-100'
+              : 'text-emerald-200';
+        } else if (text.trim().startsWith('//')) {
+          fg = 'text-amber-300/70 italic';
+        }
+        const accent =
+          isHighlight
+            ? highlightTone === 'bad'
+              ? 'border-l-2 border-red-400'
+              : 'border-l-2 border-emerald-400/80'
+            : 'border-l-2 border-transparent';
+        return (
+          <div key={lineNo} className={`flex items-stretch ${bg} ${accent}`}>
+            <span className="w-7 text-right pr-2 text-muted-foreground/40 select-none">
+              {lineNo}
+            </span>
+            <span className={`flex-1 ${fg}`}>{text || '\u200b'}</span>
+            {isHighlight && annotation && (
+              <span className="pl-3 pr-3 self-center text-[10px] uppercase tracking-[0.18em] text-red-200 whitespace-nowrap font-semibold">
+                ← {annotation}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CodeFixDemo() {
+  const [revealed, setRevealed] = useState(false);
+
+  useEffect(() => {
+    // Brief pause so the user lands on the BEFORE block first, then the
+    // AFTER block fades in underneath it.
+    const t = setTimeout(() => setRevealed(true), 900);
+    return () => clearTimeout(t);
+  }, []);
+
+  const beforeLines = [FUNC_OPEN, VULN_LINE, FUNC_CLOSE];
+  const afterLines = [FUNC_OPEN, COMMENT_LINE, FIX_LINE, FUNC_CLOSE];
+  const beforeHighlight = beforeLines.indexOf(VULN_LINE) + 1;
+  const afterHighlight = afterLines.indexOf(FIX_LINE) + 1;
+
+  return (
+    <div className="relative group">
+      <div className="absolute -inset-px bg-gradient-to-br from-accent/40 via-accent/0 to-cyan-400/30 rounded-lg blur-md opacity-60 group-hover:opacity-90 transition-opacity"></div>
+      <div className="relative bg-[#0B0D13] border border-accent/20 rounded-lg overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#14171F] border-b border-border/60">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500/70 flex-shrink-0"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70 flex-shrink-0"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500/70 flex-shrink-0"></span>
+            <span className="ml-2 text-[11px] text-muted-foreground tracking-wider font-mono truncate">
+              comment.tsx · code review
+            </span>
+          </div>
+        </div>
+
+        <div className="relative p-5 font-mono text-[12.5px] leading-relaxed">
+          <div className="absolute inset-0 pointer-events-none opacity-40 bg-grid-pattern-fine"></div>
+
+          <div className="relative space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-[0.22em]">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-red-200 bg-red-500/15 border border-red-400/45 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                  Before · XSS sink
+                </span>
+                <span className="ml-auto text-muted-foreground/70 normal-case tracking-normal text-[11px]">
+                  &lt;img src=x onerror=alert(1)&gt; fires
+                </span>
+              </div>
+              <CodeBlock
+                lines={beforeLines}
+                highlightLine={beforeHighlight}
+                highlightTone="bad"
+                annotation="XSS sink"
+              />
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground/60">
+              <span className="h-px flex-1 bg-border/50"></span>
+              <span>fix</span>
+              <span className="text-accent">↓</span>
+              <span className="h-px flex-1 bg-border/50"></span>
+            </div>
+
+            <div
+              className={`transition-all duration-700 ease-out ${
+                revealed
+                  ? 'opacity-100 translate-y-0'
+                  : 'opacity-0 translate-y-2'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-[0.22em]">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-accent bg-accent/10 border border-accent/35 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                  After · input sanitized
+                </span>
+                <span className="ml-auto text-muted-foreground/70 normal-case tracking-normal text-[11px]">
+                  payload rendered as text
+                </span>
+              </div>
+              <CodeBlock
+                lines={afterLines}
+                highlightLine={afterHighlight}
+                highlightTone="good"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TrackCard({
   badge,
   title,
@@ -247,14 +401,14 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
 
           <div className="relative animate-fadeInUp animate-delay-300">
             <div className="absolute -top-6 -left-6 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
-              ▢ live grader output
+              ▢ before / after
             </div>
-            <GraderTerminal />
+            <CodeFixDemo />
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
               {[
-                { k: '<25s', v: 'avg grade' },
+                { k: '4', v: 'languages' },
                 { k: '2', v: 'tracks' },
-                { k: '10+', v: 'challenges' },
+                { k: 'AI', v: 'tailored hints' },
               ].map((s) => (
                 <div key={s.v} className="px-3 py-3 bg-card/40 border border-border rounded">
                   <div className="text-accent text-lg font-mono">{s.k}</div>
