@@ -15,7 +15,14 @@ interface DashboardProps {
 }
 
 /** Code-review items shown in the list before the backend has full content. */
-type DashboardChallenge = ChallengeSummary & { isPreview?: boolean };
+type DashboardChallenge = ChallengeSummary & { isPreview?: boolean; isTodo?: boolean };
+
+const TODO_CHALLENGE_IDS = new Set([
+  'csrf-profile-email-change',
+  'idor-invoice-download',
+  'jwt-none-alg-bypass',
+  'ssrf-metadata-fetcher',
+]);
 
 // Code-review challenges are currently driven by frontend-only data (see
 // `src/app/data/codeReviewChallenges.ts`). They show up alongside backend
@@ -124,7 +131,10 @@ export function Dashboard({ user, onProfileClick, onSelectChallenge }: Dashboard
         byId.set(p.id, p);
       }
     }
-    return Array.from(byId.values());
+    return Array.from(byId.values()).map((challenge) => ({
+      ...challenge,
+      isTodo: TODO_CHALLENGE_IDS.has(challenge.id),
+    }));
   }, [challenges]);
 
   const sortChallenges = (list: ChallengeSummary[]) =>
@@ -493,11 +503,19 @@ interface ChallengeRowProps {
 function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowProps) {
   const row = challenge as DashboardChallenge;
   const isPreview = Boolean(row.isPreview);
+  const isTodo = Boolean(row.isTodo);
+  const isUnavailable = isPreview || isTodo;
   const done =
-    !isPreview && (completed.has(challenge.id) || completed.has(`${challenge.id}:attack`));
+    !isUnavailable && (completed.has(challenge.id) || completed.has(`${challenge.id}:attack`));
 
   return (
-    <div className="w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 hover:border-accent/60 hover:bg-foreground/5 transition-colors">
+    <div
+      className={`w-full border border-border rounded px-4 py-4 grid grid-cols-12 items-center gap-4 transition-colors ${
+        isUnavailable
+          ? 'bg-foreground/[0.02] opacity-80'
+          : 'hover:border-accent/60 hover:bg-foreground/5'
+      }`}
+    >
       <span className="col-span-12 md:col-span-6 flex items-center gap-2 min-w-0">
         <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground border border-border/70 rounded px-2 py-0.5 flex-shrink-0">
           {formatChallengeNumber(challenge.display_number)}
@@ -506,6 +524,11 @@ function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowP
         {isPreview && (
           <span className="text-[10px] uppercase tracking-wider text-cyan-300/90 border border-cyan-400/30 rounded px-1.5 py-0.5 flex-shrink-0">
             preview
+          </span>
+        )}
+        {isTodo && (
+          <span className="text-[10px] uppercase tracking-wider text-amber-300/90 border border-amber-400/30 bg-amber-400/5 rounded px-1.5 py-0.5 flex-shrink-0">
+            coming soon
           </span>
         )}
         {done && (
@@ -525,12 +548,11 @@ function ChallengeRow({ challenge, completed, onSelectChallenge }: ChallengeRowP
         </span>
       </span>
       <div className="col-span-4 md:col-span-2 justify-self-end">
-        {isPreview ? (
+        {isUnavailable ? (
           <span
             className="inline-block px-4 py-2 text-xs uppercase tracking-wider rounded border border-border text-muted-foreground cursor-not-allowed"
-            title="Not wired to the grader yet"
           >
-            Coming soon
+            {isTodo ? 'Locked' : 'Coming soon'}
           </span>
         ) : (
           <button
