@@ -41,12 +41,12 @@ async def connect_db() -> None:
     settings = get_settings()
     _client = AsyncIOMotorClient(
         settings.mongo_url,
-        serverSelectionTimeoutMS=3000,
+        serverSelectionTimeoutMS=15000,
     )
     _db = _client[settings.mongo_db]
 
     try:
-        await asyncio.wait_for(_client.admin.command("ping"), timeout=3)
+        await asyncio.wait_for(_client.admin.command("ping"), timeout=15)
         logger.info("MongoDB connected at %s", settings.mongo_url)
         await _ensure_user_indexes(_db)
         try:
