@@ -24,13 +24,15 @@ from app.services.attack_session import (
 from app.services.gemma import (
     generate_attack_hint,
     generate_code_review_hint,
+    _is_real_api_key,
     _local_fallback_response,
+    _shape_reading_result,
 )
 
 
 def _has_gemma_key() -> bool:
     from app.config import get_settings
-    return bool(get_settings().gemma_api_key)
+    return _is_real_api_key(get_settings().gemma_api_key)
 
 
 def test_payload_tracking():
@@ -91,6 +93,32 @@ def test_local_fallback_no_attempts():
     assert "analysis" in result
     assert "No attempts" in result["analysis"]
     print(f"  PASS: No-attempts hint: \"{result['hint'][:80]}...\"")
+
+
+def test_reading_feedback_is_student_facing_and_non_spoilery():
+    """Reading feedback should not leak reference-specific answer keys."""
+    result = _shape_reading_result(
+        {
+            "passed": False,
+            "feedback": (
+                "The student missed the SQL injection payload and should use "
+                "parameterized queries to fix it."
+            ),
+            "missing_points": [
+                "Purpose of the code (Flask login)",
+                "How the vulnerability is exploited (example payload)",
+                "How to fix the vulnerability (parameterized queries)",
+            ],
+        }
+    )
+
+    combined = f"{result['feedback']} {' '.join(result['missing_points'])}".lower()
+    assert result["passed"] is False
+    assert "you" in result["feedback"].lower()
+    assert "the student" not in combined
+    assert "payload" not in combined
+    assert "parameterized" not in combined
+    assert result["missing_points"] == ["Purpose: what the code is for."]
 
 
 def test_local_fallback_generic_attempts():
