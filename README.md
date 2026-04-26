@@ -1,81 +1,79 @@
 # Lector
-
-> Practice the security and software engineering skill that comes before every exploit or fix: reading the code.
-
-Lector is a CTF-style learning platform for security-minded software engineers. It teaches learners to read unfamiliar code, trace user-controlled input, understand application behavior, exploit real vulnerabilities in isolated sandboxes, and then patch the bug without breaking normal functionality.
-
-The core idea is simple: no skipping straight to payloads. Each challenge starts with a short reading check, then unlocks either a sandboxed attack workspace or a code-review editor, and finally asks the learner to defend the code with a tested fix.
-
-Built for **LA Hacks** under the **Light the Way (Education)** track.
+Lector is an interactive platform for practicing one of the most overlooked software engineering skills: reading code with intent.
+Instead of starting from a blank function body, users inspect existing code, understand how it behaves, and then act on that understanding.
+Lector currently supports two tracks:
+- **Security**: exploit a live vulnerable app, capture the flag, then patch the source so the exploit no longer works
+- **Code review**: inspect buggy or risky code and improve it so it behaves correctly and more safely
+## Why this exists
+LeetCode-style practice does not capture much of day-to-day engineering work. Real engineers spend a lot of time:
+- reading unfamiliar code
+- tracing control flow and user input
+- spotting risky assumptions
+- validating fixes without breaking behavior
+Lector is built around that workflow.
 
 ---
 
 ## Table of Contents
 
-- [Why Lector](#why-lector)
-- [The Three-Stage Flow](#the-three-stage-flow)
-- [Key Features](#key-features)
+- [Features](#features)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Repository Layout](#repository-layout)
 - [Running Locally](#running-locally)
+  - [Prerequisites](#prerequisites)
+  - [Quick start: one-shot dev script](#quick-start-one-shot-dev-script)
+  - [Manual setup](#manual-setup)
 - [Environment Variables](#environment-variables)
 - [Challenge Package Format](#challenge-package-format)
 - [Tracks: Security and Code Review](#tracks-security-and-code-review)
+  - [Security track (7 challenges)](#security-track-7-challenges)
+  - [Code-review track](#code-review-track)
 - [Grading Pipeline](#grading-pipeline)
+  - [Security track (`grade_submission` → `_grade_security`)](#security-track-grade_submission--_grade_security)
+  - [Code-review track (`grade_code_review_submission`)](#code-review-track-grade_code_review_submission)
+  - [Reading-summary check (`check_reading_comprehension`)](#reading-summary-check-check_reading_comprehension)
 - [REST API Surface](#rest-api-surface)
 - [Agent Integration: MCP Server and CLI](#agent-integration-mcp-server-and-cli)
+  - [MCP server](#mcp-server)
+  - [CLI wrapper](#cli-wrapper)
 - [Data Model and Scoring](#data-model-and-scoring)
+  - [MongoDB collections](#mongodb-collections)
+  - [Scoring rules](#scoring-rules)
+  - [Streaks](#streaks)
 - [Testing](#testing)
+  - [Backend](#backend)
+  - [Frontend](#frontend)
+  - [CI](#ci)
 - [LA Hacks Submission](#la-hacks-submission)
 - [What's Next](#whats-next)
+- [License & Attributions](#license--attributions)
+
+
 
 ---
 
-## Why Lector
+## Features
 
-Most security training platforms reward only the final payload or patch. The actual engineering skill, reading unfamiliar code, tracing data flow, and recognizing where users touch the system, is treated as background knowledge. Beginners can paste payloads from writeups without understanding what made them work, and experienced developers rarely get structured practice connecting a vulnerable line of code to a real consequence.
+- **Security challenge flow**
+  - reading summary gate
+  - live attack workspace against sandboxed vulnerable apps
+  - flag capture and exploit tracking
+  - defend workspace with patch grading
 
-Lector makes that reading step explicit. Every challenge starts behind a **reading gate**: the learner writes a short summary that names the code's purpose, main flow, and public surface area. Only after that check passes does the workspace open. By the time the learner is sending payloads or rewriting functions, they have already built a mental model of the application.
+- **Code review challenge flow**
+  - multi-language challenge variants
+  - static hints and adaptive AI hints
+  - backend validation for code submissions
+  - compile/runtime checks for supported review challenges
 
----
+- **Execution-grounded grading**
+  - security patches are verified by replaying known exploits
+  - code review submissions can be checked for real behavior, not just string matches
 
-## The Three-Stage Flow
-
-Each challenge moves a learner through a deliberate progression:
-
-### 1. Read
-
-The learner sees the challenge source files in a Monaco editor and writes a short reading summary. The summary is graded against a fixed three-point rubric (`purpose`, `main_flow`, `public_surface`) by Gemma. Feedback is written for the student and avoids leaking exploit details from the reference summary.
-
-### 2. Attack or Review
-
-For **security** challenges, the platform spins up a per-user Docker container running the vulnerable app and serves it back through a reverse proxy embedded in an in-page iframe. The learner browses the target, tests hypotheses, submits payloads, and captures the flag. Every relevant request is saved as payload history for contextual hints.
-
-For **code-review** challenges, there is no container. The learner edits a buggy snippet (JavaScript, Python, Java, or C, depending on the challenge) directly in the browser. A backend grader runs language-specific test harnesses against the submitted code in a temporary directory.
-
-### 3. Defend
-
-After capturing the flag (security) or passing review (code-review), learners enter the defend phase: patch the source so the original exploit no longer works, **without breaking the functional tests**. The grader spins up a fresh container, applies the unified diff, restarts the app, runs `tests/functional.py` (must pass), then runs `tests/exploit.py` (must fail - exploit no longer works). Both have to come out the right way for the patch to grade green.
-
----
-
-## Key Features
-
-- **Reading-comprehension gate** powered by Gemma, with a fixed three-point rubric and learner-facing feedback that avoids spoiling the exploit.
-- **Per-user Docker sandboxes** for security challenges with a 256 MB memory cap, 50% CPU quota, `pids_limit=64`, ephemeral containers, and `auto_remove=True`.
-- **Reverse-proxy attack iframe** that rewrites root-relative URLs (`href`, `src`, `action`, `formaction`) to stay inside the proxy and injects a `postMessage` navigation bridge so the parent UI can track iframe clicks and form submits in real time.
-- **Per-session flag and admin password** - every attack session mints a fresh `FLAG{<base>_<random>}` and `Acm3!<random>` admin password, injected as `LECTOR_FLAG` and `LECTOR_ADMIN_PASSWORD` environment variables. Two learners on the same challenge see different flags; replay-sharing is impossible.
-- **Custom unified-diff applier** with path-traversal protection - patches that try to escape the challenge's `code/` directory are rejected.
-- **Multi-language code-review grader** running `node`, `python3`, `javac`/`java`, and `gcc` against learner-submitted code with per-language test harnesses.
-- **Three auth providers**: anonymous nickname session (UUID), email + password (pbkdf2_sha256), and Google Identity Services (ID-token verification on the backend).
-- **Persistent payload history** - every proxied request the user makes during an attack session is stored in MongoDB and can be replayed for hint generation across sessions.
-- **Contextual hint system** with tiers (1 = nudge, 2 = name the concept, 3 = near-solution) plus adaptive hints based on the learner's recent payloads and progress.
-- **Daily streak tracking** that survives one missed day so a single skipped attempt doesn't reset progress.
-- **Leaderboard** ranked by total score across both tracks.
-- **MCP server** exposing the grader as agent-callable tools (`list_lector_challenges`, `lector_verify`) - Claude, ChatGPT, Cursor, etc. can grade patches without an API account.
-- **CLI wrapper** (`python -m app.verify_cli verify`) for terminal demos and CI.
-- **Resilient Gemma integration** - local fallback when the API key is missing or matches a known placeholder, on any HTTP error, and on unexpected response shapes. Cached responses live in `gemma_cache` keyed by SHA-256 of the prompt with a 7-day TTL.
+- **Agent integration**
+  - MCP server for grader access
+  - local CLI wrapper for patch verification
 
 ---
 
