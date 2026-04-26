@@ -18,9 +18,9 @@ Install backend dependencies, then run the MCP server from the `backend/` direct
 Available tools:
 
 - `list_lector_challenges(track?)`
-- `cyberleet_verify(challenge_id, patch)`
+- `lector_verify(challenge_id, patch)`
 
-`cyberleet_verify` accepts a challenge ID plus a unified diff patch string and returns the same grading result shape used by the app backend.
+`lector_verify` accepts a challenge ID plus a unified diff patch string and returns the same grading result shape used by the app backend.
 
 ### Repo config
 
