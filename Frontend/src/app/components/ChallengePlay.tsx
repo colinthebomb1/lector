@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import confetti from 'canvas-confetti';
 import {
   api,
   type AttackPayloadRecord,
@@ -65,6 +66,7 @@ export function ChallengePlay({
   const [history, setHistory] = useState<SubmissionHistory | null>(null);
   const [payloads, setPayloads] = useState<AttackPayloadRecord[]>([]);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
+  const [showDefendSuccessModal, setShowDefendSuccessModal] = useState(false);
   const [showHintConfirmModal, setShowHintConfirmModal] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode | null>(null);
   const [editedFiles, setEditedFiles] = useState<Record<string, string>>({});
@@ -375,6 +377,36 @@ export function ChallengePlay({
     workspaceMode,
   ]);
 
+  useEffect(() => {
+    const shouldCelebrate =
+      showCaptureModal || (showDefendSuccessModal && patchResult?.status === 'passed');
+    if (!shouldCelebrate) return;
+
+    const end = Date.now() + 1800;
+    const colors = ['#f59e0b', '#34d399', '#60a5fa', '#f472b6'];
+    const frame = () => {
+      confetti({
+        particleCount: 8,
+        angle: 60,
+        spread: 70,
+        origin: { x: 0.1, y: 0 },
+        colors,
+      });
+      confetti({
+        particleCount: 8,
+        angle: 120,
+        spread: 70,
+        origin: { x: 0.9, y: 0 },
+        colors,
+      });
+      if (Date.now() < end) {
+        window.requestAnimationFrame(frame);
+      }
+    };
+
+    frame();
+  }, [patchResult?.status, showCaptureModal, showDefendSuccessModal]);
+
   const handleSubmitPatch = useCallback(async () => {
     if (!challenge) return;
     const generatedPatch = buildUnifiedDiff(challenge.code_files, editedFiles);
@@ -391,7 +423,10 @@ export function ChallengePlay({
       const result = await api.submitPatch(challengeId, generatedPatch);
       setPatchResult(result);
       await refreshOverviewData();
-      if (result.status === 'passed') onCompleted();
+      if (result.status === 'passed') {
+        onCompleted();
+        setShowDefendSuccessModal(true);
+      }
     } catch (err) {
       setPatchResult({
         status: 'error',
@@ -404,8 +439,14 @@ export function ChallengePlay({
 
   const handleBackToDashboardFromModal = useCallback(async () => {
     setShowCaptureModal(false);
+    setShowDefendSuccessModal(false);
     await handleExit();
   }, [handleExit]);
+
+  const handleBackToAttackWorkspace = useCallback(async () => {
+    setShowDefendSuccessModal(false);
+    await handleLaunchWorkspace();
+  }, [handleLaunchWorkspace]);
 
   const codeFileNames = useMemo(
     () => (challenge ? Object.keys(challenge.code_files) : []),
@@ -764,12 +805,40 @@ export function ChallengePlay({
       </main>
 
       {showCaptureModal && (
-        <CaptureSuccessModal
+        <SecuritySuccessModal
+          mode="attack"
           challengeName={challenge?.name ?? 'this challenge'}
-          hasDefendPhase={challenge?.has_defend_phase ?? false}
-          onContinueToDefend={() => void handleContinueToDefend()}
-          onBackToDashboard={() => void handleBackToDashboardFromModal()}
+          feedback="Flag accepted! You've exploited the vulnerability."
+          scoreAwarded={null}
+          primaryActionLabel={
+            challenge?.has_defend_phase ? 'Continue to Defend' : 'Return to Dashboard'
+          }
+          secondaryActionLabel={
+            challenge?.has_defend_phase ? 'Keep Exploring' : undefined
+          }
+          onPrimaryAction={() =>
+            challenge?.has_defend_phase
+              ? void handleContinueToDefend()
+              : void handleBackToDashboardFromModal()
+          }
+          onSecondaryAction={
+            challenge?.has_defend_phase ? () => setShowCaptureModal(false) : undefined
+          }
           onDismiss={() => setShowCaptureModal(false)}
+        />
+      )}
+
+      {showDefendSuccessModal && patchResult?.status === 'passed' && (
+        <SecuritySuccessModal
+          mode="defend"
+          challengeName={challenge?.name ?? 'this challenge'}
+          feedback={displayPatchMessage(patchResult)}
+          scoreAwarded={patchResult.score_awarded ?? null}
+          primaryActionLabel="Return to Dashboard"
+          secondaryActionLabel="Back to Attack Workspace"
+          onPrimaryAction={() => void handleBackToDashboardFromModal()}
+          onSecondaryAction={() => void handleBackToAttackWorkspace()}
+          onDismiss={() => setShowDefendSuccessModal(false)}
         />
       )}
 
@@ -843,21 +912,29 @@ function HintConfirmModal({ onDismiss, onConfirm }: HintConfirmModalProps) {
   );
 }
 
-interface CaptureSuccessModalProps {
+interface SecuritySuccessModalProps {
+  mode: 'attack' | 'defend';
   challengeName: string;
-  hasDefendPhase: boolean;
-  onContinueToDefend: () => void;
-  onBackToDashboard: () => void;
+  feedback: string;
+  scoreAwarded: number | null;
+  primaryActionLabel: string;
+  secondaryActionLabel?: string;
+  onPrimaryAction: () => void;
+  onSecondaryAction?: () => void;
   onDismiss: () => void;
 }
 
-function CaptureSuccessModal({
+function SecuritySuccessModal({
+  mode,
   challengeName,
-  hasDefendPhase,
-  onContinueToDefend,
-  onBackToDashboard,
+  feedback,
+  scoreAwarded,
+  primaryActionLabel,
+  secondaryActionLabel,
+  onPrimaryAction,
+  onSecondaryAction,
   onDismiss,
-}: CaptureSuccessModalProps) {
+}: SecuritySuccessModalProps) {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
@@ -882,41 +959,79 @@ function CaptureSuccessModal({
       <div className="relative w-full max-w-md border border-green-400/40 rounded-lg bg-card shadow-[0_0_60px_-15px_rgba(74,222,128,0.45)] overflow-hidden animate-fadeInUp">
         <div className="px-6 pt-6 pb-4 border-b border-border/70 bg-green-400/5">
           <p className="text-[10px] uppercase tracking-[0.25em] text-green-400 font-semibold">
-            Flag captured
+            {mode === 'attack' ? 'Attack Complete' : 'Challenge Passed'}
           </p>
           <h3
             id="capture-success-title"
             className="text-xl text-foreground mt-2"
           >
-            Attack complete — nice work.
+            {mode === 'attack'
+              ? 'Congratulations, Flag Captured!'
+              : 'Congratulations, Challenge Passed!'}
           </h3>
           <p className="text-sm text-muted-foreground mt-2">
-            You exploited <span className="text-foreground">{challengeName}</span>{' '}
-            and pulled the flag. Want to keep going and patch the vulnerability,
-            or head back to the dashboard?
+            {mode === 'attack' ? (
+              <>
+                You exploited <span className="text-foreground">{challengeName}</span> and
+                pulled the flag.
+              </>
+            ) : (
+              <>
+                You successfully patched <span className="text-foreground">{challengeName}</span>.
+              </>
+            )}
           </p>
         </div>
-        <div className="px-6 py-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded border border-green-400/25 bg-green-400/5 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-green-300 mb-2">
+              Graded Feedback
+            </p>
+            <p className="text-sm text-foreground/90">{feedback}</p>
+          </div>
+          {scoreAwarded !== null && (
+            <div
+              className={`rounded border px-4 py-3 ${
+                scoreAwarded > 0
+                  ? 'border-amber-300/40 bg-amber-300/5'
+                  : 'border-border/70 bg-background/40'
+              }`}
+            >
+              <p className="text-[10px] uppercase tracking-[0.18em] text-amber-300 mb-1">
+                Score
+              </p>
+              <p className="text-sm text-foreground/90">
+                {scoreAwarded > 0
+                  ? `+${scoreAwarded} pts added to your total.`
+                  : 'Already solved earlier — no additional points awarded.'}
+              </p>
+            </div>
+          )}
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          {secondaryActionLabel && onSecondaryAction ? (
+            <button
+              type="button"
+              onClick={onSecondaryAction}
+              className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent transition-colors"
+            >
+              {secondaryActionLabel}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={onBackToDashboard}
+            onClick={onDismiss}
             className="px-4 py-2 text-xs uppercase tracking-wider border border-border rounded text-foreground hover:border-accent hover:text-accent transition-colors"
           >
-            Back to Dashboard
+            Keep Reviewing
           </button>
           <button
             type="button"
-            onClick={onContinueToDefend}
-            disabled={!hasDefendPhase}
-            title={
-              hasDefendPhase
-                ? 'Move on to defending this challenge'
-                : 'This challenge has no defend phase'
-            }
+            onClick={onPrimaryAction}
             className="px-4 py-2 text-xs uppercase tracking-wider rounded bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {hasDefendPhase ? 'Continue to Defend →' : 'No Defend Phase'}
+            {primaryActionLabel}
           </button>
+          </div>
         </div>
       </div>
     </div>
