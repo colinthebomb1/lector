@@ -363,8 +363,8 @@ export function Landing({ user, onPrimaryClick }: LandingProps) {
             <p className="text-lg md:text-2xl text-foreground/80 max-w-2xl leading-snug animate-fadeInUp animate-delay-200">
               Reviewing code for bugs is the most-used skill in software engineering
               {' — and '}
-              <span className="text-foreground/50 line-through">now</span>
-              <span className="text-green-400">here</span> teaches it deliberately.
+              <span className="text-foreground/50 line-through">nowhere</span>
+              <span className="text-green-400 ml-2">here</span> teaches it deliberately.
             </p>
 
             <div className="flex gap-3 md:gap-4 flex-wrap animate-fadeInUp animate-delay-400">
