@@ -12,10 +12,14 @@ import {
 } from '../lib/api';
 import { CodeSnippet } from './CodeSnippet';
 
+type WorkspaceMode = 'attack' | 'defend';
+
 interface ChallengePlayProps {
   challenge: ChallengeSummary;
   challengeId: string;
+  routeWorkspaceMode: WorkspaceMode | null;
   user: CurrentUser;
+  onWorkspaceModeChange: (mode: WorkspaceMode | null) => void;
   onExit: () => void;
   onCompleted: () => void;
   onProfileClick: () => void;
@@ -29,15 +33,15 @@ type Status =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-type WorkspaceMode = 'attack' | 'defend';
-
 const MIN_PANE_PERCENT = 20;
 const MAX_PANE_PERCENT = 80;
 
 export function ChallengePlay({
   challenge: challengeSummary,
   challengeId,
+  routeWorkspaceMode,
   user,
+  onWorkspaceModeChange,
   onExit,
   onCompleted,
   onProfileClick,
@@ -66,6 +70,7 @@ export function ChallengePlay({
   const [editedFiles, setEditedFiles] = useState<Record<string, string>>({});
   const [submittingPatch, setSubmittingPatch] = useState(false);
   const [patchResult, setPatchResult] = useState<PatchResult | null>(null);
+  const summaryPassed = Boolean(history?.progress.summary_passed);
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const stoppedRef = useRef(false);
@@ -184,12 +189,16 @@ export function ChallengePlay({
     };
   }, [challengeId, stopSession]);
 
-  const handleLaunchWorkspace = useCallback(async () => {
+  const handleLaunchWorkspace = useCallback(async (options: { syncRoute?: boolean } = {}) => {
+    if (options.syncRoute ?? true) {
+      onWorkspaceModeChange('attack');
+    }
     setWorkspaceMode('attack');
     setHint(null);
     setFlagFeedback(null);
     setStatus({ kind: 'starting' });
     try {
+      stoppedRef.current = false;
       await api.startAttack(challengeId);
       setTargetPath('/');
       setTargetCanGoBack(false);
@@ -205,7 +214,7 @@ export function ChallengePlay({
         message: err instanceof Error ? err.message : 'Failed to start challenge',
       });
     }
-  }, [challengeId]);
+  }, [challengeId, onWorkspaceModeChange]);
 
   const handleNavigateTarget = useCallback(() => {
     setTargetLocation(targetPath);
@@ -314,12 +323,57 @@ export function ChallengePlay({
     setStatus({ kind: 'ready' });
   }, [refreshOverviewData, stopSession]);
 
-  const handleOpenDefendWorkspace = useCallback(() => {
+  const handleOpenDefendWorkspace = useCallback((options: { syncRoute?: boolean } = {}) => {
+    if (options.syncRoute ?? true) {
+      onWorkspaceModeChange('defend');
+    }
     setPatchResult(null);
     setProxyUrl(null);
     setWorkspaceMode('defend');
     setStatus({ kind: 'ready' });
-  }, []);
+  }, [onWorkspaceModeChange]);
+
+  useEffect(() => {
+    if (routeWorkspaceMode === workspaceMode) return;
+
+    if (routeWorkspaceMode && !history) return;
+
+    if (routeWorkspaceMode && !summaryPassed) {
+      onWorkspaceModeChange(null);
+      setWorkspaceMode(null);
+      setProxyUrl(null);
+      setPatchResult(null);
+      setStatus((current) => (current.kind === 'loading' ? current : { kind: 'overview' }));
+      return;
+    }
+
+    if (routeWorkspaceMode === 'attack') {
+      void handleLaunchWorkspace({ syncRoute: false });
+      return;
+    }
+
+    if (routeWorkspaceMode === 'defend') {
+      handleOpenDefendWorkspace({ syncRoute: false });
+      return;
+    }
+
+    if (workspaceMode === 'attack') {
+      void stopSession();
+    }
+    setWorkspaceMode(null);
+    setProxyUrl(null);
+    setPatchResult(null);
+    setStatus((current) => (current.kind === 'loading' ? current : { kind: 'overview' }));
+  }, [
+    handleLaunchWorkspace,
+    handleOpenDefendWorkspace,
+    history,
+    onWorkspaceModeChange,
+    routeWorkspaceMode,
+    summaryPassed,
+    stopSession,
+    workspaceMode,
+  ]);
 
   const handleSubmitPatch = useCallback(async () => {
     if (!challenge) return;
@@ -410,8 +464,7 @@ export function ChallengePlay({
                     }
                     setPatchResult(null);
                   }
-                  setWorkspaceMode(null);
-                  setStatus({ kind: 'overview' });
+                  onWorkspaceModeChange(null);
                 }}
                 className="text-xs uppercase tracking-wider px-3 py-1.5 border border-border rounded hover:border-accent hover:text-accent transition-colors"
                 title="Back to challenge overview"
