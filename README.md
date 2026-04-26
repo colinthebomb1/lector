@@ -1,8 +1,10 @@
 # Lector
 
-> Learn to **read code carefully** before you try to break it or fix it.
+> Practice the security and software engineering skill that comes before every exploit or fix: reading the code.
 
-Lector is a cybersecurity education platform that turns secure-code reading into an explicit, gradeable step inside every challenge. Learners can't jump straight to a payload — the platform first asks them to summarize what the code does, checks that summary against a rubric, and only then unlocks a sandboxed attack workspace, a defend workspace, or a code-review editor.
+Lector is a CTF-style learning platform for security-minded software engineers. It teaches learners to read unfamiliar code, trace user-controlled input, understand application behavior, exploit real vulnerabilities in isolated sandboxes, and then patch the bug without breaking normal functionality.
+
+The core idea is simple: no skipping straight to payloads. Each challenge starts with a short reading check, then unlocks either a sandboxed attack workspace or a code-review editor, and finally asks the learner to defend the code with a tested fix.
 
 Built for **LA Hacks** under the **Light the Way (Education)** track.
 
@@ -32,9 +34,9 @@ Built for **LA Hacks** under the **Light the Way (Education)** track.
 
 ## Why Lector
 
-Most security training platforms reward only the final payload or patch. The actual skill — reading unfamiliar code, tracing data flow, recognizing where users touch the system — is treated as an implicit prerequisite. Beginners often paste payloads from writeups without understanding what made them work, and never build the comprehension habit that real security work requires.
+Most security training platforms reward only the final payload or patch. The actual engineering skill, reading unfamiliar code, tracing data flow, and recognizing where users touch the system, is treated as background knowledge. Beginners can paste payloads from writeups without understanding what made them work, and experienced developers rarely get structured practice connecting a vulnerable line of code to a real consequence.
 
-Lector inverts that. Every challenge starts behind a **reading gate**: the learner has to write a short summary that names the code's purpose, main flow, and public surface area. Only after a Gemma-graded check passes does the workspace open. By the time the learner is firing payloads or rewriting functions, they've already been forced to look at the code as code, not as a target.
+Lector makes that reading step explicit. Every challenge starts behind a **reading gate**: the learner writes a short summary that names the code's purpose, main flow, and public surface area. Only after that check passes does the workspace open. By the time the learner is sending payloads or rewriting functions, they have already built a mental model of the application.
 
 ---
 
@@ -44,36 +46,36 @@ Each challenge moves a learner through a deliberate progression:
 
 ### 1. Read
 
-The learner sees the challenge source files in a Monaco editor and writes a short reading summary. The summary is graded against a fixed three-point rubric (`purpose`, `main_flow`, `public_surface`) by Gemma. Feedback is non-spoilery — the grader is explicitly instructed not to leak exploit details from the reference summary.
+The learner sees the challenge source files in a Monaco editor and writes a short reading summary. The summary is graded against a fixed three-point rubric (`purpose`, `main_flow`, `public_surface`) by Gemma. Feedback is written for the student and avoids leaking exploit details from the reference summary.
 
 ### 2. Attack or Review
 
-For **security** challenges, the platform spins up a per-user Docker container running the vulnerable app and serves it back through a reverse proxy embedded in an in-page iframe. The learner browses, fuzzes, and submits payloads; every form submission is captured and stored as payload history that powers contextual AI hints.
+For **security** challenges, the platform spins up a per-user Docker container running the vulnerable app and serves it back through a reverse proxy embedded in an in-page iframe. The learner browses the target, tests hypotheses, submits payloads, and captures the flag. Every relevant request is saved as payload history for contextual hints.
 
 For **code-review** challenges, there is no container. The learner edits a buggy snippet (JavaScript, Python, Java, or C, depending on the challenge) directly in the browser. A backend grader runs language-specific test harnesses against the submitted code in a temporary directory.
 
 ### 3. Defend
 
-After capturing the flag (security) or passing review (code-review), learners enter the defend phase: patch the source so the original exploit no longer works, **without breaking the functional tests**. The grader spins up a fresh container, applies the unified diff, restarts the app, runs `tests/functional.py` (must pass), then runs `tests/exploit.py` (must fail — exploit no longer works). Both have to come out the right way for the patch to grade green.
+After capturing the flag (security) or passing review (code-review), learners enter the defend phase: patch the source so the original exploit no longer works, **without breaking the functional tests**. The grader spins up a fresh container, applies the unified diff, restarts the app, runs `tests/functional.py` (must pass), then runs `tests/exploit.py` (must fail - exploit no longer works). Both have to come out the right way for the patch to grade green.
 
 ---
 
 ## Key Features
 
-- **Reading-comprehension gate** powered by Gemma, with a fixed three-point rubric and learner-facing feedback that doesn't spoil the exploit.
-- **Per-user Docker sandboxes** for security challenges — 256 MB memory cap, 50% CPU quota, `pids_limit=64`, ephemeral, with `auto_remove=True`.
+- **Reading-comprehension gate** powered by Gemma, with a fixed three-point rubric and learner-facing feedback that avoids spoiling the exploit.
+- **Per-user Docker sandboxes** for security challenges with a 256 MB memory cap, 50% CPU quota, `pids_limit=64`, ephemeral containers, and `auto_remove=True`.
 - **Reverse-proxy attack iframe** that rewrites root-relative URLs (`href`, `src`, `action`, `formaction`) to stay inside the proxy and injects a `postMessage` navigation bridge so the parent UI can track iframe clicks and form submits in real time.
-- **Per-session flag and admin password** — every attack session mints a fresh `FLAG{<base>_<random>}` and `Acm3!<random>` admin password, injected as `LECTOR_FLAG` and `LECTOR_ADMIN_PASSWORD` environment variables. Two learners on the same challenge see different flags; replay-sharing is impossible.
-- **Custom unified-diff applier** with path-traversal protection — patches that try to escape the challenge's `code/` directory are rejected.
+- **Per-session flag and admin password** - every attack session mints a fresh `FLAG{<base>_<random>}` and `Acm3!<random>` admin password, injected as `LECTOR_FLAG` and `LECTOR_ADMIN_PASSWORD` environment variables. Two learners on the same challenge see different flags; replay-sharing is impossible.
+- **Custom unified-diff applier** with path-traversal protection - patches that try to escape the challenge's `code/` directory are rejected.
 - **Multi-language code-review grader** running `node`, `python3`, `javac`/`java`, and `gcc` against learner-submitted code with per-language test harnesses.
 - **Three auth providers**: anonymous nickname session (UUID), email + password (pbkdf2_sha256), and Google Identity Services (ID-token verification on the backend).
-- **Persistent payload history** — every proxied request the user makes during an attack session is stored in MongoDB and can be replayed for hint generation across sessions.
-- **Tiered AI hints** (1 = nudge, 2 = name the concept, 3 = near-solution) plus adaptive hints that read the learner's recent payloads and progress.
+- **Persistent payload history** - every proxied request the user makes during an attack session is stored in MongoDB and can be replayed for hint generation across sessions.
+- **Contextual hint system** with tiers (1 = nudge, 2 = name the concept, 3 = near-solution) plus adaptive hints based on the learner's recent payloads and progress.
 - **Daily streak tracking** that survives one missed day so a single skipped attempt doesn't reset progress.
 - **Leaderboard** ranked by total score across both tracks.
-- **MCP server** exposing the grader as agent-callable tools (`list_lector_challenges`, `lector_verify`) — Claude, ChatGPT, Cursor, etc. can grade patches without an API account.
+- **MCP server** exposing the grader as agent-callable tools (`list_lector_challenges`, `lector_verify`) - Claude, ChatGPT, Cursor, etc. can grade patches without an API account.
 - **CLI wrapper** (`python -m app.verify_cli verify`) for terminal demos and CI.
-- **Resilient Gemma integration** — local fallback when the API key is missing or matches a known placeholder, on any HTTP error, and on unexpected response shapes. Cached responses live in `gemma_cache` keyed by SHA-256 of the prompt with a 7-day TTL.
+- **Resilient Gemma integration** - local fallback when the API key is missing or matches a known placeholder, on any HTTP error, and on unexpected response shapes. Cached responses live in `gemma_cache` keyed by SHA-256 of the prompt with a 7-day TTL.
 
 ---
 
@@ -120,7 +122,7 @@ After capturing the flag (security) or passing review (code-review), learners en
                                     └───────────────────────────────┘
 ```
 
-The MCP server reuses the same `grade_submission` and `challenge_loader` modules as the HTTP backend — there is one grading code path, exposed two ways.
+The MCP server reuses the same `grade_submission` and `challenge_loader` modules as the HTTP backend - there is one grading code path, exposed two ways.
 
 ---
 
@@ -231,11 +233,11 @@ The MCP server reuses the same `grade_submission` and `challenge_loader` modules
 
 ### Prerequisites
 
-- **Docker** — required for challenge containers and for local MongoDB if you are not using Atlas
+- **Docker** - required for challenge containers and for local MongoDB if you are not using Atlas
 - **Python 3.11+** with `venv`
 - **Node.js 18+** and `npm`
-- A **Google AI Studio API key** (optional — without one, the local Gemma fallback kicks in and reading checks/hints still work, just deterministically)
-- A **Google OAuth client ID** (optional — only needed if you want Google sign-in; email/password and anonymous sessions work without it)
+- A **Google AI Studio API key** (optional - without one, the local Gemma fallback kicks in and reading checks/hints still work, just deterministically)
+- A **Google OAuth client ID** (optional - only needed if you want Google sign-in; email/password and anonymous sessions work without it)
 
 ### Quick start: one-shot dev script
 
@@ -394,7 +396,7 @@ The challenge loader is forgiving: a directory without `metadata.json` is skippe
 
 ### Code-review track
 
-Code-review challenges live in the frontend (`Frontend/src/app/data/codeReviewChallenges.ts`) — they're language-specific snippets, not Docker images. The backend grader is registered per `(challenge_id, language)` pair in `code_review_grader.py`:
+Code-review challenges live in the frontend (`Frontend/src/app/data/codeReviewChallenges.ts`) - they're language-specific snippets, not Docker images. The backend grader is registered per `(challenge_id, language)` pair in `code_review_grader.py`:
 
 | Challenge                            | Languages              |
 | ------------------------------------ | ---------------------- |
@@ -411,11 +413,11 @@ Each grader writes the submission to a `TemporaryDirectory`, compiles or syntax-
 
 1. Ensure the per-challenge image exists, building from the challenge `Dockerfile` if not (cached in `_built_images` after first build)
 2. Spawn a fresh container with `network_mode="none"`, capped resources, `pids_limit=64`
-3. Apply the unified diff via `_apply_unified_diff` — a custom parser that handles `diff --git` headers and `@@ -N,M @@` hunks, validates context lines, and rejects patches escaping `code/`
+3. Apply the unified diff via `_apply_unified_diff` - a custom parser that handles `diff --git` headers and `@@ -N,M @@` hunks, validates context lines, and rejects patches escaping `code/`
 4. `tar` the patched files and `put_archive` them into `/app` inside the container
 5. `container.restart()` to pick up the patched files
-6. Run `tests/functional.py` (must pass — patch can't break normal app behavior)
-7. Run `tests/exploit.py` (must **fail** — the original exploit must no longer work)
+6. Run `tests/functional.py` (must pass - patch can't break normal app behavior)
+7. Run `tests/exploit.py` (must **fail** - the original exploit must no longer work)
 8. Tear down the container in a `finally` block
 
 ### Code-review track (`grade_code_review_submission`)
@@ -428,7 +430,7 @@ Each grader writes the submission to a `TemporaryDirectory`, compiles or syntax-
 
 ### Reading-summary check (`check_reading_comprehension`)
 
-The Gemma prompt is locked to a three-point rubric — `purpose`, `main_flow`, `public_surface`. Missing-point labels outside that allowlist are filtered before reaching the learner. The grader is explicitly instructed not to reveal exploit payloads, fixes, or details from the reference summary that the learner didn't already mention.
+The Gemma prompt is locked to a three-point rubric - `purpose`, `main_flow`, `public_surface`. Missing-point labels outside that allowlist are filtered before reaching the learner. The grader is explicitly instructed not to reveal exploit payloads, fixes, or details from the reference summary that the learner didn't already mention.
 
 ---
 
@@ -438,60 +440,60 @@ All endpoints are mounted under `/api/`. Authenticated routes require a `session
 
 **Auth** (`/api/auth`)
 
-- `POST /session` — anonymous nickname session, returns and sets `session_id`
-- `POST /signup` — email + password registration (pbkdf2_sha256)
-- `POST /login` — email + password login
-- `POST /google` — Google ID token verification + login/upsert
-- `GET  /google/client-id` — public Google OAuth client ID (for the frontend)
-- `POST /logout` — clears the session cookie
-- `GET  /me` — current user, completed challenges, total score, daily streak
+- `POST /session` - anonymous nickname session, returns and sets `session_id`
+- `POST /signup` - email + password registration (pbkdf2_sha256)
+- `POST /login` - email + password login
+- `POST /google` - Google ID token verification + login/upsert
+- `GET  /google/client-id` - public Google OAuth client ID (for the frontend)
+- `POST /logout` - clears the session cookie
+- `GET  /me` - current user, completed challenges, total score, daily streak
 
 **Challenges** (`/api/challenges`)
 
-- `GET /` — list challenges, filterable by `?track=`, `?difficulty=`, `?category=`
-- `GET /categories` — distinct sorted category list
-- `GET /{challenge_id}` — full detail: scenario, code files, hint tiers, phase availability
-- `GET /{challenge_id}/code/{file_path}` — single file from the code package
+- `GET /` - list challenges, filterable by `?track=`, `?difficulty=`, `?category=`
+- `GET /categories` - distinct sorted category list
+- `GET /{challenge_id}` - full detail: scenario, code files, hint tiers, phase availability
+- `GET /{challenge_id}/code/{file_path}` - single file from the code package
 
 **Submissions** (`/api/submissions`)
 
-- `POST /summary` — reading summary, graded by Gemma against the three-point rubric
-- `POST /patch` — unified diff patch, graded by the security or code-review grader
-- `POST /code-review` — full-file code review submission for the code-review track
-- `POST /annotation` — line-level annotations + optional fix patch
-- `GET  /history/{challenge_id}` — normalized submission timeline + progress summary (`summary_passed`, `attack_captured`, `defend_passed`, `review_fixed`, `attempt_count`, `total_score_awarded`, `last_submission_at`)
+- `POST /summary` - reading summary, graded by Gemma against the three-point rubric
+- `POST /patch` - unified diff patch, graded by the security or code-review grader
+- `POST /code-review` - full-file code review submission for the code-review track
+- `POST /annotation` - line-level annotations + optional fix patch
+- `GET  /history/{challenge_id}` - normalized submission timeline + progress summary (`summary_passed`, `attack_captured`, `defend_passed`, `review_fixed`, `attempt_count`, `total_score_awarded`, `last_submission_at`)
 
 **Attack** (`/api/attack`)
 
-- `POST /{id}/start` — spin up the per-user vulnerable container, return host port + proxy base
-- `POST /{id}/stop` — kill and remove the container
-- `POST /{id}/flag` — validate captured flag (compared against the per-session expected flag)
-- `POST /{id}/hint` — Gemma-generated hint based on the user's recent payloads
-- `GET  /{id}/payloads` — persisted payload history for this user/challenge
-- `ANY  /{id}/proxy/{path}` — reverse proxy to the running container with HTML URL rewriting + nav-bridge injection
+- `POST /{id}/start` - spin up the per-user vulnerable container, return host port + proxy base
+- `POST /{id}/stop` - kill and remove the container
+- `POST /{id}/flag` - validate captured flag (compared against the per-session expected flag)
+- `POST /{id}/hint` - Gemma-generated hint based on the user's recent payloads
+- `GET  /{id}/payloads` - persisted payload history for this user/challenge
+- `ANY  /{id}/proxy/{path}` - reverse proxy to the running container with HTML URL rewriting + nav-bridge injection
 
 **Gemma** (`/api/gemma`)
 
-- `POST /hint` — tier-1/2/3 progressive hint
-- `POST /code-review-hint` — adaptive hint with progress estimation (`early`/`partial`/`near`)
-- `POST /grade-explanation` — free-text explanation graded against the challenge's `rubric.json`
-- `POST /writeup` — personalized post-solve writeup combining the user's attempts and final patch
+- `POST /hint` - tier-1/2/3 progressive hint
+- `POST /code-review-hint` - adaptive hint with progress estimation (`early`/`partial`/`near`)
+- `POST /grade-explanation` - free-text explanation graded against the challenge's `rubric.json`
+- `POST /writeup` - personalized post-solve writeup combining the user's attempts and final patch
 
 **Leaderboard** (`/api/leaderboard`)
 
-- `GET /` — top users by `total_score` (capped at 100)
+- `GET /` - top users by `total_score` (capped at 100)
 
 **Health**
 
-- `GET /api/health` — app status and database connectivity
+- `GET /api/health` - app status and database connectivity
 
-The fully typed frontend client (`Frontend/src/app/lib/api.ts`) covers every endpoint with TypeScript interfaces — it's the easiest spec to read alongside this list.
+The fully typed frontend client (`Frontend/src/app/lib/api.ts`) covers every endpoint with TypeScript interfaces - it's the easiest spec to read alongside this list.
 
 ---
 
 ## Agent Integration: MCP Server and CLI
 
-Lector exposes its grader two ways outside the HTTP API, so Claude, ChatGPT, Cursor, and other MCP-aware clients can grade patches without going through the web app. Both reuse the same `grade_submission` code path as the HTTP backend — there's no parallel implementation to drift out of sync.
+Lector exposes its grader two ways outside the HTTP API, so Claude, ChatGPT, Cursor, and other MCP-aware clients can grade patches without going through the web app. Both reuse the same `grade_submission` code path as the HTTP backend - there's no parallel implementation to drift out of sync.
 
 ### MCP server
 
@@ -502,8 +504,8 @@ cd backend
 
 Tools exposed:
 
-- `list_lector_challenges(track?: "security" | "code-review")` — returns id, name, track, difficulty, category, description, estimated minutes
-- `lector_verify(challenge_id: str, patch: str)` — grades a unified diff against a challenge and returns `{status, message, functional_passed, track_test_passed, output, elapsed_seconds}`
+- `list_lector_challenges(track?: "security" | "code-review")` - returns id, name, track, difficulty, category, description, estimated minutes
+- `lector_verify(challenge_id: str, patch: str)` - grades a unified diff against a challenge and returns `{status, message, functional_passed, track_test_passed, output, elapsed_seconds}`
 
 The repo root ships an `mcp.json` ready to drop into a client config:
 
@@ -530,7 +532,7 @@ cd backend
   --patch-file /tmp/fix.diff
 ```
 
-Exit codes: `0` patch passed, `1` patch graded but failed, `2` bad input (e.g., missing patch file). Output is `model_dump`-ed JSON — easy to pipe into `jq` or assert on in CI.
+Exit codes: `0` patch passed, `1` patch graded but failed, `2` bad input (e.g., missing patch file). Output is `model_dump`-ed JSON - easy to pipe into `jq` or assert on in CI.
 
 See [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md) for more.
 
@@ -540,10 +542,10 @@ See [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md) for more.
 
 ### MongoDB collections
 
-- **`users`** — `session_id` (uuid, unique), `nickname`, `name`, `email` (partial-unique), `password_hash` (pbkdf2_sha256), `auth_provider` (`password` | `google`), `google_sub` (partial-unique), `avatar_url`, `created_at`, `challenges_completed: list[str]`, `total_score: int`
-- **`submissions`** — `user_id`, `challenge_id`, `submission_type` (`summary` | `flag` | `patch` | `annotation` | `code_review`), `phase` (`read` | `attack` | `defend` | `review`), `payload`, `result: GradeResult`, `score_awarded: int`, `created_at`. Indexed on `created_at` and `(user_id, challenge_id, created_at desc)`
-- **`attack_payloads`** — `user_id`, `challenge_id`, `path`, `method`, `form_data`, `response_status`, `timestamp`. Indexed on `(user_id, challenge_id, timestamp desc)`
-- **`gemma_cache`** — `_id` = SHA-256 of prompt, `response`, `prompt` (truncated 500 chars), `created_at`. TTL index expires entries after 7 days
+- **`users`** - `session_id` (uuid, unique), `nickname`, `name`, `email` (partial-unique), `password_hash` (pbkdf2_sha256), `auth_provider` (`password` | `google`), `google_sub` (partial-unique), `avatar_url`, `created_at`, `challenges_completed: list[str]`, `total_score: int`
+- **`submissions`** - `user_id`, `challenge_id`, `submission_type` (`summary` | `flag` | `patch` | `annotation` | `code_review`), `phase` (`read` | `attack` | `defend` | `review`), `payload`, `result: GradeResult`, `score_awarded: int`, `created_at`. Indexed on `created_at` and `(user_id, challenge_id, created_at desc)`
+- **`attack_payloads`** - `user_id`, `challenge_id`, `path`, `method`, `form_data`, `response_status`, `timestamp`. Indexed on `(user_id, challenge_id, timestamp desc)`
+- **`gemma_cache`** - `_id` = SHA-256 of prompt, `response`, `prompt` (truncated 500 chars), `created_at`. TTL index expires entries after 7 days
 
 ### Scoring rules
 
@@ -555,7 +557,7 @@ Scoring is deduplicated using a MongoDB `$ne` filter on `challenges_completed`, 
 
 ### Streaks
 
-`services/streak.py` counts the number of consecutive UTC days, ending today **or yesterday**, on which the user has at least one passing submission. The "yesterday" tolerance is intentional — the streak survives across the day boundary until the user's next attempt, so a single missed day doesn't reset progress.
+`services/streak.py` counts the number of consecutive UTC days, ending today **or yesterday**, on which the user has at least one passing submission. The "yesterday" tolerance is intentional - the streak survives across the day boundary until the user's next attempt, so a single missed day doesn't reset progress.
 
 ---
 
@@ -570,15 +572,15 @@ cd backend
 
 Test suites cover:
 
-- `test_api.py` — challenge listing, detail, single-file fetch
-- `test_auth_api.py` — signup, login, session, /me
-- `test_attack_api.py` + `test_attack_e2e.py` — attack session lifecycle, flag submission, payload history
-- `test_defender_api.py` + `test_defender_e2e.py` — patch submission, grader integration
-- `test_code_review_submission_api.py` — language-specific code-review grading
-- `test_submission_history.py` — progress summary computation
-- `test_ai_hints.py` — Gemma integration with stubbed responses
-- `test_container_service.py` — diff applier, path-traversal rejection, tar packaging
-- `test_mcp_server.py` — MCP tool surface
+- `test_api.py` - challenge listing, detail, single-file fetch
+- `test_auth_api.py` - signup, login, session, /me
+- `test_attack_api.py` + `test_attack_e2e.py` - attack session lifecycle, flag submission, payload history
+- `test_defender_api.py` + `test_defender_e2e.py` - patch submission, grader integration
+- `test_code_review_submission_api.py` - language-specific code-review grading
+- `test_submission_history.py` - progress summary computation
+- `test_ai_hints.py` - Gemma integration with stubbed responses
+- `test_container_service.py` - diff applier, path-traversal rejection, tar packaging
+- `test_mcp_server.py` - MCP tool surface
 
 ### Frontend
 
@@ -593,20 +595,20 @@ Playwright smoke tests live in `Frontend/tests/`.
 
 GitHub Actions workflows under `.github/workflows/`:
 
-- `backend-tests.yml` — pytest on the backend
-- `frontend-checks.yml` — frontend build/test checks
+- `backend-tests.yml` - pytest on the backend
+- `frontend-checks.yml` - frontend build/test checks
 
 ---
 
 ## LA Hacks Submission
 
-Lector is built for **LA Hacks** under the **Light the Way (Education)** track. It addresses a specific gap in security education — the comprehension step that gets skipped between "see the challenge" and "fire the payload" — by making it a first-class, gradeable phase that gates the rest of the workspace.
+Lector is built for **LA Hacks** under the **Light the Way (Education)** track. It addresses a specific gap in security and software engineering education: the comprehension step that gets skipped between "see the challenge" and "fire the payload." Lector makes that step a first-class, gradeable phase that gates the rest of the workspace.
 
 The platform combines:
 
-- AI-powered formative feedback (reading checks, contextual hints, post-solve writeups) that scales individual tutoring without replacing the learner's own thinking
-- Production-grade engineering primitives (per-user Docker sandboxes, safe diff application, MCP integration) that make the learning environment genuinely safe and genuinely real
-- A flow that mirrors how secure code reviewers actually work — read first, hypothesize, verify, then patch
+- Rubric-based reading checks, contextual hints, and post-solve writeups that reinforce code comprehension before exploitation
+- Production-grade engineering primitives, including per-user Docker sandboxes, safe diff application, and MCP integration
+- A workflow that mirrors secure software engineering practice: read first, hypothesize, verify, then patch
 
 ---
 
