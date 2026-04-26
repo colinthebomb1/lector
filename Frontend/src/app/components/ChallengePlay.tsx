@@ -321,9 +321,10 @@ export function ChallengePlay({
     setFlagFeedback(null);
     setProxyUrl(null);
     setPatchResult(null);
+    onWorkspaceModeChange('defend');
     setWorkspaceMode('defend');
     setStatus({ kind: 'ready' });
-  }, [refreshOverviewData, stopSession]);
+  }, [onWorkspaceModeChange, refreshOverviewData, stopSession]);
 
   const handleOpenDefendWorkspace = useCallback((options: { syncRoute?: boolean } = {}) => {
     if (options.syncRoute ?? true) {
